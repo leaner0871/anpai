@@ -18,6 +18,13 @@
   --lilac:#B6A9DA; --lilac-soft:#EEEAF8; --gray:#CBD6D0; --gray-soft:#F1F4F2;
   --r:16px;
 }
+html[data-theme="dark"]{
+  --bg:#121917; --surface:#18211E; --ink:#E8EFEB; --ink-2:#A9B7B1; --muted:#79877F;
+  --line:#26312C; --wash:#1C2622;
+  --mint:#6FC7A6; --mint-soft:#1D3A31; --sky:#7FB0DE; --sky-soft:#1B2A38;
+  --butter:#D8B36A; --butter-soft:#39301F; --coral:#DB8A7A; --coral-soft:#3B2621;
+  --lilac:#A296CE; --lilac-soft:#2A2537; --gray:#3C4A44; --gray-soft:#212B27;
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
@@ -85,8 +92,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--mint);box-shadow:0 0 
 .hours span.lb{position:absolute;right:6px;font-size:10px;color:var(--muted);transform:translateY(-6px)}
 .col{position:relative;border-left:1px solid var(--line);cursor:pointer}
 .col:last-child{border-right:1px solid var(--line)}
-.col.today-col{background:#FCFEFD}
-.col.weekend{background:#FCFDFC}
+.col.today-col{background:var(--wash)}
+.col.weekend{background:var(--wash)}
+html[data-theme="dark"] .col{background:#151D1A}
+html[data-theme="dark"] .col.today-col{background:#1A2420}
+html[data-theme="dark"] .col.weekend{background:#171F1C}
+html[data-theme="dark"] .cmdin{background:#1B2421}
 .col::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(to bottom,transparent 0 calc(var(--hh) - 1px),var(--line) calc(var(--hh) - 1px) var(--hh))}
 .blk{position:absolute;left:3px;right:3px;border-radius:9px;padding:4px 6px;overflow:hidden;
@@ -103,6 +114,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--mint);box-shadow:0 0 
 .blk.t-butter{background:var(--butter-soft);border-color:var(--butter);color:#8A6A20}
 .blk.t-coral{background:var(--coral-soft);border-color:var(--coral);color:#A8553F}
 .blk.t-gray{background:var(--gray-soft);border-color:var(--gray);color:#63706A}
+html[data-theme="dark"] .blk.t-sky{color:#A8C8E8}
+html[data-theme="dark"] .blk.t-lilac{color:#C4B7E8}
+html[data-theme="dark"] .blk.t-mint{color:#9FD9C2}
+html[data-theme="dark"] .blk.t-butter{color:#E2C685}
+html[data-theme="dark"] .blk.t-coral{color:#E8A697}
+html[data-theme="dark"] .blk.t-gray{color:#AEBAB4}
+html[data-theme="dark"] .chip.p0{background:#3B2621;color:#E8A697}
+html[data-theme="dark"] .chip.p1{background:#39301F;color:#E2C685}
+html[data-theme="dark"] .chip.p2{background:#1D3A31;color:#9FD9C2}
+html[data-theme="dark"] .chip.p3{background:#212B27;color:#AEBAB4}
+html[data-theme="dark"] .li .fbar{filter:saturate(.9) brightness(.95)}
+html[data-theme="dark"] .nowline{background:rgba(111,199,166,.6)}
+html[data-theme="dark"] .card{box-shadow:none}
 .nowline{position:absolute;left:0;right:0;height:1.5px;background:rgba(62,169,138,.55);z-index:4;pointer-events:none}
 .nowline::before{content:"";position:absolute;left:-3px;top:-2.5px;width:6px;height:6px;border-radius:50%;background:#3EA98A}
 
@@ -251,7 +275,7 @@ const DEFAULT_SETTINGS={
   weeks:18, dayStart:'08:00', dayEnd:'23:00',
   meals:[[720,780],[1050,1110]],
   apiKey:'', baseURL:'https://api.deepseek.com', model:'deepseek-chat',
-  seed:true
+  theme:'light', seed:true
 };
 function seed(){
   const t=today(), mon=addDays(t,-(wdOf(t)-1));
@@ -308,6 +332,19 @@ function loadDB(){
 }
 function persist(){try{localStorage.setItem(LS,JSON.stringify(db));}catch(e){toast('保存失败：'+e.message);}}
 function settings(){return db.settings;}
+function applyTheme(){
+  const t=settings().theme||'light';
+  const dark=t==='dark'||(t==='auto'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme=dark?'dark':'light';
+  const m=document.querySelector('meta[name="theme-color"]');
+  if(m)m.setAttribute('content',dark?'#121917':'#F7FAF8');
+}
+function cycleTheme(){
+  const order=['light','dark','auto'],cur=settings().theme||'light';
+  settings().theme=order[(order.indexOf(cur)+1)%3];
+  persist();applyTheme();render();
+  toast('主题：'+({light:'浅色',dark:'深色',auto:'跟随系统'})[settings().theme]);
+}
 
 /* ============ 时间与排程 ============ */
 function weekIdx(dateKey){
@@ -435,7 +472,9 @@ const TABS=[['week','课程表'],['today','今日'],['plan','规划'],['money','
 function render(){
   $('#nav').innerHTML=TABS.map(([k,n])=>'<button data-act="tab" data-k="'+k+'" class="'+(S.view===k?'on':'')+'">'+n+'</button>').join('');
   const d=new Date();
-  $('#headRight').textContent='第 '+weekIdx(today())+' 周 · 周'+WEEK[wdOf(today())-1]+' '+(d.getMonth()+1)+'月'+d.getDate()+'日';
+  $('#headRight').innerHTML='<span>第 '+weekIdx(today())+' 周 · 周'+WEEK[wdOf(today())-1]+' '+(d.getMonth()+1)+'月'+d.getDate()+'日</span>'
+    +'<button class="btn icon" data-act="search" title="搜索（/）" style="font-size:15px;line-height:1">⌕</button>'
+    +'<button class="btn icon" data-act="theme" title="切换主题" style="font-size:13px;line-height:1">◐</button>';
   const el=$('#app');
   el.innerHTML = (S.view==='week'?viewWeek():S.view==='today'?viewToday():S.view==='plan'?viewPlan()
     :S.view==='money'?viewMoney():S.view==='report'?viewReport():viewSet()) + cmdBar();
@@ -681,6 +720,7 @@ function viewPlan(){
     const pct=ts.length?Math.round(d/ts.length*100):0;
     return '<div class="li"><div class="lt"><b>'+esc(g.title)+'</b><span>'+ts.length+' 个任务 · 完成 '+d+' · 截止 '+g.due+'</span>'
       +'<div style="height:4px;background:var(--gray-soft);border-radius:2px;margin-top:5px;overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:var(--mint)"></i></div></div>'
+      +'<button class="btn sm" data-act="splitgoal" data-id="'+g.id+'" title="让 AI 拆成待办">拆任务</button>'
       +'<span class="tag">'+pct+'%</span></div>';
   }).join('');
   const pend=db.tasks.filter(t=>!t.done).sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
@@ -769,6 +809,9 @@ function viewSet(){
     +'<div class="field"><label>学期开始（第一周周一）</label><input id="setSem" type="date" value="'+s.semStart+'"></div>'
     +'<div class="field"><label>每天开始</label><input id="setDS" type="time" value="'+s.dayStart+'"></div>'
     +'<div class="field"><label>每天结束</label><input id="setDE" type="time" value="'+s.dayEnd+'"></div>'
+    +'<div class="field"><label>主题</label><div class="seg" id="setTheme">'
+    +[['light','浅色'],['dark','深色'],['auto','跟随系统']].map(o=>'<button data-act="theme" data-v="'+o[0]+'" class="'+((s.theme||'light')===o[0]?'on':'')+'">'+o[1]+'</button>').join('')
+    +'</div></div>'
     +'</div>'
     +'<div class="acts" style="justify-content:flex-start;margin-top:14px">'
     +'<button class="btn primary" data-act="saveset">保存</button>'
@@ -803,7 +846,7 @@ function closeModal(){$('#modalRoot').innerHTML='';}
 function openTask(t,preset){
   S.editing=t?t.id:null;
   const p=preset||{};
-  const v=t||{id:'',title:'',est:60,due:p.d||today(),dueTime:'23:59',pri:1,split:true,note:'',pin:null};
+  const v=t||{id:'',title:'',est:60,due:p.d||today(),dueTime:'23:59',pri:1,split:true,note:'',pin:null,repeat:''};
   const pins=v.pin||(p.s?{d:p.d,s:p.s}:null);
   const priSeg=[0,1,2,3].map(i=>'<button data-act="pri" data-v="'+i+'" class="'+(v.pri===i?'on':'')+'">P'+i+'</button>').join('');
   modal('<h3>'+(t?'编辑任务':'新任务')+'<button class="x" data-act="closed">×</button></h3>'
@@ -814,6 +857,8 @@ function openTask(t,preset){
     +'<div class="field"><label>截止时间</label><input id="tDueTime" type="time" value="'+(v.dueTime||'23:59')+'"></div>'
     +'</div>'
     +'<div class="field" style="margin-top:10px"><label>手工优先级</label><div class="seg" id="tPri">'+priSeg+'</div></div>'
+    +'<div class="field" style="margin-top:10px"><label>重复（做完自动排下一次）</label><div class="seg" id="tRep">'
+    +REPS.map(r=>'<button data-act="rep" data-v="'+r[0]+'" class="'+((v.repeat||'')===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div></div>'
     +'<div class="field" style="margin-top:10px"><label>备注</label><input id="tNote" type="text" value="'+esc(v.note)+'" placeholder="第三章 / 交给老师"></div>'
     +'<div class="row" style="margin-top:10px"><label class="hint" style="display:flex;gap:6px;align-items:center"><input id="tSplit" type="checkbox" '+(v.split?'checked':'')+' style="width:auto">允许拆成两段排</label></div>'
     +(pins?'<div class="preview" style="margin-top:10px">已指定从 '+pins.d+' '+pins.s+' 开始，保存后固定在这个位置。</div>':'')
@@ -856,6 +901,77 @@ function openTxn(id){
     +'<br><b style="font-size:16px;color:'+(x.type==='in'?'#3EA98A':'#C0674F')+'">'+(x.type==='in'?'+':'−')+money(x.amount)+'</b></div>'
     +'<div class="acts"><button class="btn" data-act="deltxn" data-id="'+x.id+'" style="margin-right:auto;color:#C0674F">删除</button>'
     +'<button class="btn primary" data-act="closed">关闭</button></div>');
+}
+/* ---- 搜索 / 撤销 / 重复 ---- */
+let UNDO=null;
+function snap(){UNDO=JSON.stringify(db);}
+function toastUndo(msg){
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#2E3B36;color:#fff;padding:9px 14px;border-radius:10px;font-size:12.5px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;gap:12px;align-items:center;opacity:0;transition:.2s';
+  const sp=document.createElement('span');sp.textContent=msg;
+  const b=document.createElement('button');b.textContent='撤销';b.style.cssText='color:#8FE3C4;font-weight:600;background:none;border:none;font-size:12.5px';
+  b.onclick=function(){if(UNDO){db=JSON.parse(UNDO);UNDO=null;planAll();persist();render();toast('已撤销');}d.remove();};
+  d.appendChild(sp);d.appendChild(b);document.body.appendChild(d);
+  requestAnimationFrame(()=>d.style.opacity='1');
+  setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),220);},5000);
+}
+const REPS=[['','不重复'],['daily','每天'],['workdays','工作日'],['weekly','每周'],['monthly','每月']];
+function nextDueOf(t){
+  if(t.repeat==='daily')return addDays(t.due,1);
+  if(t.repeat==='weekly')return addDays(t.due,7);
+  if(t.repeat==='monthly')return addDays(t.due,30);
+  if(t.repeat==='workdays'){let n=addDays(t.due,1);while([6,7].includes(wdOf(n)))n=addDays(n,1);return n;}
+  return null;
+}
+function spawnRepeat(t){
+  const nd=nextDueOf(t);if(!nd)return;
+  db.tasks.push({id:uid(),title:t.title,est:t.est,due:nd,dueTime:t.dueTime||'23:59',pri:t.pri,
+    split:t.split,repeat:t.repeat,done:false,doneAt:'',note:t.note,pin:null,plan:[],goalId:t.goalId||''});
+  toast('下一次：'+nd.slice(5));
+}
+function openSearch(){
+  modal('<h3>搜索<button class="x" data-act="closed">×</button></h3>'
+    +'<input id="searchIn" type="text" placeholder="任务 / 课程 / 流水，直接打字" autocomplete="off" oninput="doSearch(this.value)">'
+    +'<div id="searchOut" style="margin-top:10px;max-height:50vh;overflow:auto"></div>');
+  setTimeout(()=>{const e=$('#searchIn');if(e)e.focus();},50);
+  doSearch('');
+}
+function doSearch(q){
+  const out=$('#searchOut');if(!out)return;
+  q=String(q||'').trim().toLowerCase();
+  if(!q){out.innerHTML='<div class="hint">任务、课程、流水一起找。</div>';return;}
+  const hit=s=>String(s==null?'':s).toLowerCase().includes(q);
+  const tasks=db.tasks.filter(t=>hit(t.title)||hit(t.note)).slice(0,8);
+  const courses=db.courses.filter(c=>hit(c.name)||hit(c.loc)).slice(0,6);
+  const txns=db.txns.filter(x=>hit(x.note)||hit(x.cat)).slice(0,8);
+  let h='';
+  if(tasks.length)h+='<div class="hint" style="margin:8px 0 4px">任务</div>'+tasks.map(t=>
+    '<div class="li" data-act="task" data-id="'+t.id+'" style="padding-left:12px"><div class="lt"><b>'+esc(t.title)+'</b><span>'+t.est+'min · 截止 '+t.due.slice(5)+(t.done?' · 已完成':'')+'</span></div>'+chip(t)+'</div>').join('');
+  if(courses.length)h+='<div class="hint" style="margin:8px 0 4px">课程</div>'+courses.map(c=>
+    '<div class="li" data-act="course" data-id="'+c.id+'" style="padding-left:12px"><div class="lt"><b>'+esc(c.name)+'</b><span>周'+WEEK[c.wd-1]+' '+c.s+'–'+c.e+(c.loc?' · '+esc(c.loc):'')+'</span></div></div>').join('');
+  if(txns.length)h+='<div class="hint" style="margin:8px 0 4px">流水</div>'+txns.map(x=>
+    '<div class="li" data-act="txn" data-id="'+x.id+'" style="padding-left:12px"><div class="lt"><b>'+esc(x.note||x.cat)+'</b><span>'+x.ts.slice(5)+' · '+esc(x.cat)+'</span></div><div class="amt '+(x.type==='in'?'in':'out')+'">'+(x.type==='in'?'+':'−')+money(x.amount)+'</div></div>').join('');
+  out.innerHTML=h||'<div class="hint">没找到「'+esc(q)+'」</div>';
+}
+async function aiGoalTasks(g){
+  if(!settings().apiKey){toast('拆解要用 AI：先去「设置」填 Key');return;}
+  toast('让 AI 拆目标…');
+  try{
+    const raw=await ai('目标：'+g.title+'（截止 '+g.due+'）。今天是 '+today()+'，我是学生，白天上课时间已排满。\n'
+      +'请拆成 3–6 个具体可执行的任务，每个给出时长（分钟）、截止日期（不超过目标截止日）、优先级 0–3（0 最急）。\n'
+      +'只输出 JSON：{"tasks":[{"title":"","est":60,"due":"YYYY-MM-DD","pri":1}]}，不要解释。',
+      '你是学习计划助手，只输出 JSON。');
+    const mm=raw.match(/\{[\s\S]*\}/);if(!mm)throw new Error('没解析出 JSON');
+    const list=(JSON.parse(mm[0]).tasks||[]).filter(x=>x&&x.title);
+    if(!list.length)throw new Error('没拆出任务');
+    previewImport('把「'+g.title+'」拆成 '+list.length+' 步',
+      list.map(x=>esc(x.title)+' · '+((+x.est)||60)+'min · '+esc(x.due||g.due)).join('<br>'),
+      ()=>{
+        list.forEach(x=>db.tasks.push({id:uid(),title:x.title,est:+x.est||60,due:x.due||g.due,dueTime:'23:59',
+          pri:x.pri==null?1:+x.pri,split:true,repeat:'',done:false,doneAt:'',note:'来自目标：'+g.title,pin:null,plan:[],goalId:g.id}));
+        planAll();persist();render();toast('已拆成 '+list.length+' 步');
+      });
+  }catch(e){toast('失败：'+e.message);}
 }
 /* ---- 记账解析 ---- */
 const CATS=[['早饭|早餐|午饭|午餐|晚饭|晚餐|吃|饭|食堂|外卖|奶茶|咖啡|零食|水果','餐饮'],
@@ -1394,11 +1510,16 @@ document.addEventListener('click',ev=>{
     if(c)Object.assign(c,data);else db.courses.push(Object.assign({id:uid()},data));
     planAll();persist();closeModal();render();toast(c?'课程已改':'课程已加');return;
   }
-  if(act==='delcourse'){db.courses=db.courses.filter(x=>x.id!==id);planAll();persist();closeModal();render();return;}
+  if(act==='delcourse'){snap();db.courses=db.courses.filter(x=>x.id!==id);planAll();persist();closeModal();render();toastUndo('课程已删除');return;}
   if(act==='cmdrun'){runCommand();return;}
   if(act==='upload'){uploadFile();return;}
   if(act==='dopending'){const f=PENDING;PENDING=null;closeModal();if(f)f();return;}
-  if(act==='toggle'){ev.stopPropagation();const t=db.tasks.find(x=>x.id===id);if(t){t.done=!t.done;if(t.done)t.doneAt=today();planAll();persist();render();}return;}
+  if(act==='toggle'){ev.stopPropagation();const t=db.tasks.find(x=>x.id===id);
+    if(t){t.done=!t.done;if(t.done){t.doneAt=today();if(t.repeat)spawnRepeat(t);}planAll();persist();render();}return;}
+  if(act==='theme'){if(el.dataset.v){settings().theme=el.dataset.v;persist();applyTheme();render();}else cycleTheme();return;}
+  if(act==='search'){openSearch();return;}
+  if(act==='rep'){el.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===el));return;}
+  if(act==='splitgoal'){const g=db.goals.find(x=>x.id===id);if(g)aiGoalTasks(g);return;}
   if(act==='why'){S.sel=id;render();return;}
   if(act==='pri'){$('#tPri').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===el));el.dataset.sel=el.dataset.v;return;}
   if(act==='savetask'){
@@ -1411,10 +1532,12 @@ document.addEventListener('click',ev=>{
       pin:pinRaw?{d:pinRaw.split('|')[0],s:pinRaw.split('|')[1]}:null};
     const seg=$('#tPri').querySelector('button.on');
     data.pri=seg?+seg.dataset.v:1;
+    const repEl=$('#tRep');
+    if(repEl){const rb=repEl.querySelector('button.on');data.repeat=rb?rb.dataset.v:'';}
     if(t)Object.assign(t,data);else db.tasks.push(Object.assign({id:uid(),done:false},data));
     planAll();persist();S.sel=t?t.id:null;closeModal();render();return;
   }
-  if(act==='deltask'){db.tasks=db.tasks.filter(x=>x.id!==id);planAll();persist();closeModal();render();return;}
+  if(act==='deltask'){snap();db.tasks=db.tasks.filter(x=>x.id!==id);planAll();persist();closeModal();render();toastUndo('任务已删除');return;}
   if(act==='newgoal'){openGoal();return;}
   if(act==='savegoal'){
     const title=$('#gTitle').value.trim();if(!title){toast('写个目标');return;}
@@ -1423,7 +1546,7 @@ document.addEventListener('click',ev=>{
   }
   if(act==='addtxn'){addTxnFromText();return;}
   if(act==='txn'){openTxn(id);return;}
-  if(act==='deltxn'){db.txns=db.txns.filter(x=>x.id!==id);persist();closeModal();render();toast('已删除');return;}
+  if(act==='deltxn'){snap();db.txns=db.txns.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('已删除');return;}
   if(act==='recon'){
     const a=db.accounts.find(x=>x.id===id);if(!a)return;
     const inp=prompt('输入 '+a.name+' 的实际余额，差多少自动补一笔「未分类调整」：',acctBal(a).toFixed(2));
@@ -1451,19 +1574,20 @@ document.addEventListener('click',ev=>{
   if(act==='aireport'){aiReport();return;}
   if(act==='reset'){
     if(!confirm('会清空全部任务、课程、流水。确定？'))return;
-    localStorage.removeItem(LS);loadDB();planAll();render();
-
-if(location.protocol==='https:'||location.hostname==='127.0.0.1'||location.hostname==='localhost'){try{navigator.serviceWorker.register('sw.js').catch(function(){})}catch(e){}}toast('已重置');return;
+    snap();
+    localStorage.removeItem(LS);loadDB();planAll();persist();applyTheme();render();
+    toastUndo('已重置');return;
   }
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closeModal();
+  if(e.key==='/'&&!e.target.matches('input,textarea,select')){e.preventDefault();openSearch();}
   if(e.key==='Enter'&&e.target&&e.target.id==='txnInput'){e.preventDefault();addTxnFromText();}
   if(e.key==='Enter'&&e.target&&e.target.id==='cmdIn'){e.preventDefault();runCommand();}
 });
 
 /* ============ 启动 ============ */
-loadDB();planAll();render();
+loadDB();applyTheme();planAll();render();
 
 if(location.protocol==='https:'||location.hostname==='127.0.0.1'||location.hostname==='localhost'){try{navigator.serviceWorker.register('sw.js').catch(function(){})}catch(e){}}
 
