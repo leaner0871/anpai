@@ -1,7 +1,7 @@
 // 时序 · 离线缓存
 // 只在 https（或 localhost）下生效，file:// 与局域网 http 打不开 Service Worker。
 // 策略：页面走「网络优先」（改了页面刷新就能拿到新版），静态资源走「缓存优先」。
-const CACHE = 'shixu-v3';
+const CACHE = 'shixu-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
