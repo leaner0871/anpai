@@ -718,7 +718,7 @@ function viewPlan(){
     const ts=db.tasks.filter(t=>t.goalId===g.id);
     const d=ts.filter(t=>t.done).length;
     const pct=ts.length?Math.round(d/ts.length*100):0;
-    return '<div class="li"><div class="lt"><b>'+esc(g.title)+'</b><span>'+ts.length+' 个任务 · 完成 '+d+' · 截止 '+g.due+'</span>'
+    return '<div class="li" data-act="goal" data-id="'+g.id+'"><div class="lt"><b>'+esc(g.title)+'</b><span>'+ts.length+' 个任务 · 完成 '+d+' · 截止 '+g.due+'</span>'
       +'<div style="height:4px;background:var(--gray-soft);border-radius:2px;margin-top:5px;overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:var(--mint)"></i></div></div>'
       +'<button class="btn sm" data-act="splitgoal" data-id="'+g.id+'" title="让 AI 拆成待办">拆任务</button>'
       +'<span class="tag">'+pct+'%</span></div>';
@@ -885,12 +885,16 @@ function openCourse(c){
     +'<button class="btn" data-act="closed">取消</button>'
     +'<button class="btn primary" data-act="savecourse" data-id="'+(c?c.id:'')+'">保存</button></div>');
 }
-function openGoal(){
-  modal('<h3>新目标<button class="x" data-act="closed">×</button></h3>'
-    +'<div class="field"><label>想达成什么</label><input id="gTitle" type="text" placeholder="期末绩点 3.7"></div>'
-    +'<div class="grid2" style="margin-top:10px"><div class="field"><label>截止</label><input id="gDue" type="date" value="'+addDays(today(),30)+'"></div>'
-    +'<div class="field"><label>备注</label><input id="gNote" type="text" placeholder="重点科目"></div></div>'
-    +'<div class="acts"><button class="btn" data-act="closed">取消</button><button class="btn primary" data-act="savegoal">保存</button></div>');
+let GOAL_EDIT=null;
+function openGoal(id){
+  const g=id?db.goals.find(x=>x.id===id):null;
+  GOAL_EDIT=g?g.id:null;
+  modal('<h3>'+(g?'编辑目标':'新目标')+'<button class="x" data-act="closed">×</button></h3>'
+    +'<div class="field"><label>想达成什么</label><input id="gTitle" type="text" placeholder="期末绩点 3.7" value="'+(g?esc(g.title):'')+'"></div>'
+    +'<div class="grid2" style="margin-top:10px"><div class="field"><label>截止</label><input id="gDue" type="date" value="'+(g&&g.due?g.due:addDays(today(),30))+'"></div>'
+    +'<div class="field"><label>备注</label><input id="gNote" type="text" placeholder="重点科目" value="'+(g?esc(g.note||''):'')+'"></div></div>'
+    +'<div class="acts">'+(g?'<button class="btn" data-act="delgoal" data-id="'+g.id+'" style="margin-right:auto;color:#C0674F">删除目标</button>':'')
+    +'<button class="btn" data-act="closed">取消</button><button class="btn primary" data-act="savegoal">保存</button></div>');
 }
 
 function openTxn(id){
@@ -905,6 +909,16 @@ function openTxn(id){
 /* ---- 搜索 / 撤销 / 重复 ---- */
 let UNDO=null;
 function snap(){UNDO=JSON.stringify(db);}
+function doUndo(){
+  if(!UNDO){toast('没有可撤销的操作');return false;}
+  db=JSON.parse(UNDO);UNDO=null;planAll();persist();applyTheme();render();toast('已撤销');return true;
+}
+function doReset(){
+  if(!confirm('会清空全部任务、课程、流水。确定？\n（想留一份就先「导出备份」）'))return false;
+  snap();
+  localStorage.removeItem(LS);loadDB();planAll();persist();applyTheme();render();
+  toastUndo('已重置');return true;
+}
 function toastUndo(msg){
   const d=document.createElement('div');
   d.style.cssText='position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#2E3B36;color:#fff;padding:9px 14px;border-radius:10px;font-size:12.5px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;gap:12px;align-items:center;opacity:0;transition:.2s';
@@ -1147,8 +1161,60 @@ function findTask(q){
     ||arr.find(t=>q.split(/\s+/).filter(Boolean).every(w=>t.title.includes(w)))
     ||null;
 }
+function openHelp(){
+  const rows=[
+    ['建任务','明天下午3点 写实验报告 2小时 P1'],
+    ['完成任务','完成背单词'],
+    ['删任务','删掉整理笔记'],
+    ['挪时间','把复习线代挪到周三 20:00'],
+    ['加课程','加课 线性代数 周四 10:00-11:40 教三201'],
+    ['立目标','新目标 期末绩点3.7 12月16日'],
+    ['记账','午饭 15 微信'],
+    ['删目标','删掉目标 四级550'],
+    ['清理数据','清空数据'],
+    ['备份','导出备份'],
+    ['恢复','导入备份'],
+    ['主题','深色 / 浅色 / 跟随系统'],
+    ['撤销','撤销'],
+    ['搜索','搜索 实验']
+  ];
+  modal('<h3>这句能怎么用<button class="x" data-act="closed">×</button></h3>'
+    +'<div class="preview" style="max-height:none">'
+    +rows.map(r=>'<div style="display:flex;gap:10px;padding:3px 0"><b style="flex:0 0 68px;color:var(--ink-2);font-weight:400">'+r[0]+'</b><span>'+esc(r[1])+'</span></div>').join('')
+    +'</div>'
+    +'<div style="margin-top:8px;font-size:12px;color:var(--muted)">这些都不用联网、不用 Key。没听懂的会走 AI（要自备 Key），也可以点 📎 传 .csv 账单 / .ics 日历 / .json 备份。</div>'
+    +'<div class="acts"><button class="btn primary" data-act="closed">知道了</button></div>');
+}
 function execCommand(txt){
   let m;
+  const T=txt.replace(/\s+/g,'');
+  /* ---------- 系统指令 ---------- */
+  if(/^(帮助|怎么用|能做什么|会什么|指令|命令|help)$/i.test(T)){openHelp();return {ok:''};}
+  if(/(清空|清除|清掉|重置|恢复出厂|全删)/.test(T)&&/(数据|全部|所有|一切|记录|内容)/.test(T)){doReset();return {ok:''};}
+  if(/^(导出|备份)/.test(T)){exportJSON();return {ok:'备份已导出，去下载里找'};}
+  if(/^导入/.test(T)){uploadFile();return {ok:'挑一个文件（账单/日历/备份都行）'};}
+  if(/^(撤销|撤回|回退)$/.test(T)){doUndo();return {ok:''};}
+  if(/(深色|暗色|夜间|黑色|黑夜)/.test(T)){settings().theme='dark';persist();applyTheme();render();return {ok:'换成深色了'};}
+  if(/(浅色|亮色|日间|白天|白色)/.test(T)){settings().theme='light';persist();applyTheme();render();return {ok:'换成浅色了'};}
+  if(/(跟随系统|跟着系统|自动)/.test(T)){settings().theme='auto';persist();applyTheme();render();return {ok:'跟随系统'};}
+  m=T.match(/^(搜索|查找|找一下|搜一下)(.+)$/);
+  if(m){
+    openSearch();
+    setTimeout(()=>{const e=$('#searchIn');if(e){e.value=m[2];doSearch(m[2]);}},60);
+    return {ok:''};
+  }
+  m=T.match(/^(删除|删掉|去掉)(目标|计划)(.+)$/);
+  if(m){
+    const g=db.goals.find(x=>x.title.indexOf(m[3])>=0||m[3].indexOf(x.title)>=0);
+    if(!g)return {err:'没有叫「'+m[3]+'」的目标'};
+    snap();db.goals=db.goals.filter(x=>x.id!==g.id);db.tasks.forEach(t=>{if(t.goalId===g.id)t.goalId=null;});
+    persist();render();toastUndo('目标已删除');return {ok:'删掉了目标「'+g.title+'」'};
+  }
+  if(/^(今天|今日)(有什么|安排|干嘛|做什么|任务)$/.test(T)){
+    const k=today(),n=db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===k)).length;
+    return {ok:n?('今天排了 '+n+' 件事'):'今天没有排好的事'};
+  }
+  /* ---------- 具体动作 ---------- */
   m=txt.match(/^(完成|做完|搞定|勾掉|打勾)\s*(.+)$/);
   if(m){
     const t=findTask(m[2]);
@@ -1202,6 +1268,11 @@ function execCommand(txt){
   if(pm){pri=+pm[1];rest=rest.replace(pm[0],' ');}
   const title=rest.replace(/^(加|新增|新任务|待办|一件事|提醒我)\s*/,'').replace(/\s+/g,' ').trim();
   if(!title)return {err:'没听出要做的事'};
+  /* 没有时间/时长/优先级/明确前缀的，别硬当成任务建，交给 AI 或帮助 */
+  const strong=/^(加|新增|新任务|待办|一件事|提醒我)/.test(txt);
+  if(!strong&&!d1.d&&!d2.t&&!d0.min&&pri==null){
+    return {err:'没太听懂「'+txt+'」'};
+  }
   const due=d1.d||today(),tm=d2.t||'23:59';
   db.tasks.push({id:uid(),title,est:d0.min||60,due,dueTime:tm,pri:pri==null?1:pri,split:true,
     done:false,note:'',pin:(d1.d&&d2.t)?{d:d1.d,s:d2.t}:null});
@@ -1229,11 +1300,16 @@ function runCommand(){
   if(!el)return;
   const txt=el.value.trim();
   if(!txt)return;
-  const r=execCommand(txt);
-  if(r&&r.ok){toast(r.ok);return;}
-  if(r&&r.err){toast(r.err);}
-  if(settings().apiKey){aiCommand(txt);}
-  else if(r&&r.err){toast(r.err+'（填 Key 后可以更聪明地理解）');}
+  const r=execCommand(txt)||{};
+  if(r.ok===''){el.value='';return;}
+  if(r.ok){el.value='';toast(r.ok);return;}
+  if(r.err){
+    if(settings().apiKey){aiCommand(txt);return;}
+    toast(r.err);
+    setTimeout(openHelp,600);
+    return;
+  }
+  el.value='';
 }
 
 /* ---- AI 指令 ---- */
@@ -1539,10 +1615,21 @@ document.addEventListener('click',ev=>{
   }
   if(act==='deltask'){snap();db.tasks=db.tasks.filter(x=>x.id!==id);planAll();persist();closeModal();render();toastUndo('任务已删除');return;}
   if(act==='newgoal'){openGoal();return;}
+  if(act==='goal'){openGoal(id);return;}
   if(act==='savegoal'){
     const title=$('#gTitle').value.trim();if(!title){toast('写个目标');return;}
-    db.goals.push({id:uid(),title,due:$('#gDue').value,note:$('#gNote').value.trim()});
-    persist();closeModal();render();return;
+    const due=$('#gDue').value||addDays(today(),30),note=$('#gNote').value.trim();
+    const g=GOAL_EDIT?db.goals.find(x=>x.id===GOAL_EDIT):null;
+    if(g){g.title=title;g.due=due;g.note=note;}
+    else db.goals.push({id:uid(),title,due,note});
+    GOAL_EDIT=null;persist();closeModal();render();toast(g?'目标已更新':'目标已建立');return;
+  }
+  if(act==='delgoal'){
+    const g=db.goals.find(x=>x.id===id);if(!g)return;
+    if(!confirm('删除目标「'+g.title+'」？\n它下面的任务会保留，只是不再挂在目标上。'))return;
+    snap();db.goals=db.goals.filter(x=>x.id!==id);
+    db.tasks.forEach(t=>{if(t.goalId===id)t.goalId=null;});
+    GOAL_EDIT=null;persist();closeModal();render();toastUndo('目标已删除');return;
   }
   if(act==='addtxn'){addTxnFromText();return;}
   if(act==='txn'){openTxn(id);return;}
@@ -1572,12 +1659,9 @@ document.addEventListener('click',ev=>{
   if(act==='importjson'){importJSON();return;}
   if(act==='exportics'){exportICS();return;}
   if(act==='aireport'){aiReport();return;}
-  if(act==='reset'){
-    if(!confirm('会清空全部任务、课程、流水。确定？'))return;
-    snap();
-    localStorage.removeItem(LS);loadDB();planAll();persist();applyTheme();render();
-    toastUndo('已重置');return;
-  }
+  if(act==='reset'){doReset();return;}
+  if(act==='undo'){doUndo();return;}
+  if(act==='help'){openHelp();return;}
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closeModal();
