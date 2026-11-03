@@ -513,7 +513,7 @@ function planAll(){
 }
 
 /* ============ 状态 ============ */
-const S={view:'week',weekOff:0,sel:null,modal:null,editMode:false,hintDone:false,planAll:false};
+const S={view:'week',weekOff:0,sel:null,modal:null,editMode:false,hintDone:false,hintDrag:false,planAll:false};
 const TABS=[['week','课程表'],['today','今日'],['plan','规划'],['money','记账'],['report','报表'],['set','设置']];
 /* ============ 渲染 ============ */
 function render(){
@@ -662,8 +662,11 @@ function onBlkDown(e){
   if(e.pointerType==='mouse'&&e.button!==0)return;
   const el=e.currentTarget,col=el.closest('.col');
   if(!col)return;
-  /* 课程块平时锁住，进编辑模式才可拖/可改，防误触 */
-  if(el.dataset.act==='course'&&!S.editMode)return;
+  /* 非编辑态一律锁住拖动（课程、任务、固定块），点右上「编辑」才解锁 */
+  if(!S.editMode){
+    if(!S.hintDrag){S.hintDrag=true;toast('点右上角「编辑」，才能拖动改时间');}
+    return;
+  }
   DR={el,col,d0:col.dataset.d,id:el.dataset.id,kind:el.dataset.act==='course'?'c':'t',
       mode:(e.target.classList&&e.target.classList.contains('rez'))?'resize':'move',
       y0:e.clientY,x0:e.clientX,top0:parseFloat(el.style.top)||0,h0:parseFloat(el.style.height)||20,
@@ -1896,7 +1899,7 @@ document.addEventListener('click',ev=>{
   if(act==='fixdone'){toggleFix(el.dataset.id,el.dataset.d);return;}
   if(act==='day'){toggleDayChip(el);return;}
   if(act==='editing'){
-    S.editMode=!S.editMode;S.hintGrid=false;
+    S.editMode=!S.editMode;S.hintGrid=false;S.hintDrag=false;
     document.body.classList.toggle('editing',S.editMode);
     render();
     toast(S.editMode?'编辑模式：可以拖动 / 点开课程改了':'已退出编辑');
