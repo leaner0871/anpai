@@ -1,0 +1,370 @@
+{
+ "v": 1,
+ "settings": {
+  "semStart": "2026-09-07",
+  "weeks": 18,
+  "dayStart": "07:00",
+  "dayEnd": "23:00",
+  "meals": [
+   [
+    720,
+    780
+   ],
+   [
+    1050,
+    1110
+   ]
+  ],
+  "apiKey": "",
+  "baseURL": "https://api.deepseek.com",
+  "model": "deepseek-chat",
+  "theme": "light",
+  "seed": false
+ },
+ "courses": [
+  {
+   "id": "58e78811c3",
+   "name": "军事理论",
+   "wd": 1,
+   "s": "18:00",
+   "e": "20:35",
+   "loc": "松2301",
+   "w1": 5,
+   "w2": 16,
+   "parity": "all"
+  },
+  {
+   "id": "a726ecd92c",
+   "name": "高等数学(2)",
+   "wd": 1,
+   "s": "13:00",
+   "e": "14:30",
+   "loc": "松1321",
+   "w1": 11,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "d474c557fa",
+   "name": "普通化学",
+   "wd": 2,
+   "s": "10:05",
+   "e": "11:35",
+   "loc": "松1525",
+   "w1": 3,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "281c16b0cc",
+   "name": "声乐",
+   "wd": 2,
+   "s": "18:00",
+   "e": "21:20",
+   "loc": "活动中心202",
+   "w1": 1,
+   "w2": 16,
+   "parity": "all"
+  },
+  {
+   "id": "497cd7b8b5",
+   "name": "高等数学(2)",
+   "wd": 3,
+   "s": "08:15",
+   "e": "09:45",
+   "loc": "松1321",
+   "w1": 11,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "11f0cc0974",
+   "name": "高等数学(1)",
+   "wd": 3,
+   "s": "10:05",
+   "e": "11:35",
+   "loc": "松1121",
+   "w1": 3,
+   "w2": 10,
+   "parity": "all"
+  },
+  {
+   "id": "d75355d609",
+   "name": "环管融合认识实习",
+   "wd": 3,
+   "s": "13:00",
+   "e": "16:20",
+   "loc": "实习基地",
+   "w1": 9,
+   "w2": 12,
+   "parity": "all"
+  },
+  {
+   "id": "b426fa23fd",
+   "name": "普通化学实验",
+   "wd": 3,
+   "s": "13:00",
+   "e": "15:35",
+   "loc": "化学楼",
+   "w1": 14,
+   "w2": 17,
+   "parity": "all"
+  },
+  {
+   "id": "5507979bf2",
+   "name": "散打(男)",
+   "wd": 3,
+   "s": "15:35",
+   "e": "17:05",
+   "loc": "体育馆",
+   "w1": 3,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "1a008200e9",
+   "name": "环管融合专业导论",
+   "wd": 4,
+   "s": "13:00",
+   "e": "15:35",
+   "loc": "松1218",
+   "w1": 3,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "1009a20a8c",
+   "name": "大学新生心理导航",
+   "wd": 4,
+   "s": "15:35",
+   "e": "17:05",
+   "loc": "松2301",
+   "w1": 3,
+   "w2": 10,
+   "parity": "all"
+  },
+  {
+   "id": "71af8f9c69",
+   "name": "习概",
+   "wd": 5,
+   "s": "10:05",
+   "e": "11:35",
+   "loc": "1教201",
+   "w1": 3,
+   "w2": 18,
+   "parity": "all"
+  },
+  {
+   "id": "0f37c26080",
+   "name": "高等数学(1)",
+   "wd": 5,
+   "s": "13:00",
+   "e": "15:35",
+   "loc": "松1121",
+   "w1": 3,
+   "w2": 10,
+   "parity": "all"
+  },
+  {
+   "id": "f533f7dd84",
+   "name": "心理导航(在线)",
+   "wd": 5,
+   "s": "18:45",
+   "e": "21:20",
+   "loc": "线上",
+   "w1": 3,
+   "w2": 10,
+   "parity": "all"
+  }
+ ],
+ "tasks": [
+  {
+   "id": "405064d93f",
+   "title": "背单词",
+   "est": 30,
+   "due": "2026-11-03",
+   "dueTime": "23:59",
+   "pri": 2,
+   "split": true,
+   "repeat": "daily",
+   "done": false,
+   "doneAt": "",
+   "note": "每天半小时",
+   "pin": {
+    "d": "2026-11-03",
+    "s": "07:30"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "6d53559b29",
+   "title": "练口语",
+   "est": 15,
+   "due": "2026-11-03",
+   "dueTime": "23:59",
+   "pri": 2,
+   "split": true,
+   "repeat": "daily",
+   "done": false,
+   "doneAt": "",
+   "note": "每天15分钟",
+   "pin": {
+    "d": "2026-11-03",
+    "s": "12:30"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "1e6209f64f",
+   "title": "学 Python",
+   "est": 60,
+   "due": "2026-11-03",
+   "dueTime": "23:59",
+   "pri": 1,
+   "split": true,
+   "repeat": "daily",
+   "done": false,
+   "doneAt": "",
+   "note": "每天一小时",
+   "pin": {
+    "d": "2026-11-03",
+    "s": "22:20"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "45c795fa08",
+   "title": "健身",
+   "est": 60,
+   "due": "2026-11-03",
+   "dueTime": "23:59",
+   "pri": 1,
+   "split": true,
+   "repeat": "every3",
+   "done": false,
+   "doneAt": "",
+   "note": "练二休一：练",
+   "pin": {
+    "d": "2026-11-03",
+    "s": "16:50"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "4ccfa4d3bb",
+   "title": "健身",
+   "est": 60,
+   "due": "2026-11-04",
+   "dueTime": "23:59",
+   "pri": 1,
+   "split": true,
+   "repeat": "every3",
+   "done": false,
+   "doneAt": "",
+   "note": "练二休一：练",
+   "pin": {
+    "d": "2026-11-04",
+    "s": "17:10"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "76c4c20978",
+   "title": "跑步",
+   "est": 40,
+   "due": "2026-11-05",
+   "dueTime": "23:59",
+   "pri": 1,
+   "split": false,
+   "repeat": "every3",
+   "done": false,
+   "doneAt": "",
+   "note": "练二休一：休息日",
+   "pin": {
+    "d": "2026-11-05",
+    "s": "20:45"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "7a4eeefc69",
+   "title": "约拍",
+   "est": 120,
+   "due": "2026-11-08",
+   "dueTime": "14:00",
+   "pri": 1,
+   "split": false,
+   "repeat": "",
+   "done": false,
+   "doneAt": "",
+   "note": "",
+   "pin": {
+    "d": "2026-11-08",
+    "s": "12:00"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  },
+  {
+   "id": "634d2d009b",
+   "title": "辩论赛",
+   "est": 120,
+   "due": "2026-11-08",
+   "dueTime": "18:00",
+   "pri": 0,
+   "split": false,
+   "repeat": "",
+   "done": false,
+   "doneAt": "",
+   "note": "",
+   "pin": {
+    "d": "2026-11-08",
+    "s": "16:00"
+   },
+   "plan": [],
+   "goalId": "",
+   "late": false,
+   "overflow": false
+  }
+ ],
+ "goals": [],
+ "txns": [],
+ "accounts": [
+  {
+   "id": "wx",
+   "name": "微信",
+   "base": 0
+  },
+  {
+   "id": "ali",
+   "name": "支付宝",
+   "base": 0
+  },
+  {
+   "id": "cash",
+   "name": "现金",
+   "base": 0
+  }
+ ],
+ "anchor": "2026-11-03"
+}
