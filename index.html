@@ -1386,10 +1386,17 @@ function execCommand(txt){
     return {err:'没太听懂「'+txt+'」'};
   }
   const due=d1.d||today(),tm=d2.t||'23:59';
+  let rep='';
+  if(/每\s*天|天天|每日/.test(txt))rep='daily';
+  else if(/工作日/.test(txt))rep='workdays';
+  else if(/每\s*3\s*天|每三天/.test(txt))rep='every3';
+  else if(/每\s*周|每周|weekly/.test(txt))rep='weekly';
+  else if(/每\s*月|每月/.test(txt))rep='monthly';
   db.tasks.push({id:uid(),title,est:d0.min||60,due,dueTime:tm,pri:pri==null?1:pri,split:true,
-    done:false,note:'',pin:(d1.d&&d2.t)?{d:d1.d,s:d2.t}:null});
+    repeat:rep,done:false,note:'',pin:(d1.d&&d2.t)?{d:d1.d,s:d2.t}:null});
   planAll();persist();render();
-  return {ok:'加了「'+title+'」'+(d1.d?' '+d1.d.slice(5)+' '+(d2.t||'') : '')};
+  const repName={daily:'每天',workdays:'工作日',every3:'每3天',weekly:'每周',monthly:'每月'}[rep]||'';
+  return {ok:'加了「'+title+'」'+(d1.d?' '+d1.d.slice(5)+' '+(d2.t||'') : '')+(repName?'（'+repName+'，已排到 14 天后）':'')};
 }
 function addCourseFromText(s){
   const a=findDate(s);
