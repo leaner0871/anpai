@@ -539,7 +539,7 @@ function colHTML(d,H,ds,total){
       const cw=cWeeks(b.c), full=(cw[0]===1&&cw[1]>=(Number(settings().weeks)||18));
       const wtag=full?'':(' · '+(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'));
       const tip=b.c.name+' '+b.c.s+'–'+b.c.e+(b.c.loc?' · '+b.c.loc:'')+(full?' · 每周':wtag)+(b.c.parity==='odd'?' · 单周':b.c.parity==='even'?' · 双周':'');
-      return '<div class="blk '+TONE[b.ci%3]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+b.c.s+'–'+b.c.e+wtag+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
+      return '<div class="blk '+TONE[b.ci%3]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+(full?'每周':(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'))+(b.c.parity==='odd'?' 单':b.c.parity==='even'?' 双':'')+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
     }
     const band=bandOf(b.t);
     return '<div class="blk '+BAND_CLS[band]+tiny+(b.t.done?' done':'')+'" data-act="task" data-id="'+b.t.id+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.t.title)+'</b><em>'+hhmm(b.s)+'–'+hhmm(b.e)+'</em>'+rz+'</div>';
