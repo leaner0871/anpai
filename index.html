@@ -810,7 +810,8 @@ function viewToday(){
       +over.map(t=>'<div class="frow" data-act="task" data-id="'+t.id+'"><div class="fbar" style="background:#C0674F"></div><div class="ftxt"><b>'+esc(t.title)+'</b><span>需要 '+t.est+' 分钟，截止 '+t.due+'</span></div></div>').join('')+'</div>':'')
     +'</div>'
     +'<div class="stack">'
-    +'<div class="card"><div class="card-h"><b>已完成</b><em>今天 '+done.length+' 件</em></div>'
+    +'<div class="card"><div class="card-h"><b>已完成</b><em>今天 '+done.length+' 件</em>'
+      +(done.length?'<div class="sp"><button class="btn sm" data-act="archdone">清理</button></div>':'')+'</div>'
     +'<div class="list">'+(done.map(t=>'<div class="li"><div class="lt"><b>'+esc(t.title)+'</b><span>'+t.est+' 分钟</span></div></div>').join('')||'<div class="empty">还没有</div>')+'</div></div>'
     +'<div class="card"><div class="card-h"><b>接下来 7 天负荷</b><em>颜色越暖越满</em></div>'
     +'<div class="money">'+taskBars()+'<div class="hint" style="margin-top:6px">每天排进去的分钟数。想更松就去「规划」把截止往后推，或者把可拆分的任务改小。</div></div></div>'
@@ -884,7 +885,8 @@ function viewMoney(){
       +'<span>'+x.ts.slice(5,10)+' · '+esc(x.cat)+' · '+(a?esc(a.name):'')+'</span></div>'
       +'<div class="amt '+(x.type==='in'?'in':'out')+'">'+(x.type==='in'?'+':'−')+money(x.amount)+'</div></div>';
   }).join('');
-  return '<div class="main"><div class="card"><div class="card-h"><b>本月流水</b><em>支 '+money(out)+' · 收 '+money(inc)+'</em></div>'
+  return '<div class="main"><div class="card"><div class="card-h"><b>本月流水</b><em>支 '+money(out)+' · 收 '+money(inc)+'</em>'
+    +(db.txns.length?'<div class="sp"><button class="btn sm" data-act="exportcsv">导出 CSV</button></div>':'')+'</div>'
     +'<div style="padding:0 16px 10px"><div class="row">'
     +'<input id="txnInput" type="text" placeholder="比如：午饭 15 微信 / 收入 生活费 2000" style="flex:1">'
     +'<button class="btn primary" data-act="addtxn">记一笔</button></div>'
@@ -915,20 +917,30 @@ function moneyBars(n){
     +'<div style="display:flex;gap:4px;margin-top:4px">'+days.map(d=>'<div style="flex:1;text-align:center;font-size:9.5px;color:var(--muted)">'+d.slice(8)+'</div>').join('')+'</div>';
 }
 /* ---------- 报表 ---------- */
+function prevMonthTxns(){
+  const d=pdk(monthKey()+'-01'); d.setMonth(d.getMonth()-1);
+  const k=d.getFullYear()+'-'+pad2(d.getMonth()+1);
+  return db.txns.filter(x=>x.ts.slice(0,7)===k);
+}
 function viewReport(){
   const list=monthTxns();
   const out=list.filter(x=>x.type==='out').reduce((s,x)=>s+x.amount,0);
   const inc=list.filter(x=>x.type==='in').reduce((s,x)=>s+x.amount,0);
-  return '<div class="main"><div class="card"><div class="card-h"><b>本月支出</b><em>'+monthKey()+'</em></div>'
+  const prev=prevMonthTxns();
+  const pout=prev.filter(x=>x.type==='out').reduce((s,x)=>s+x.amount,0);
+  const pinc=prev.filter(x=>x.type==='in').reduce((s,x)=>s+x.amount,0);
+  const diff=out-pout;
+  const cmp=prev.length?(diff===0?'和上月一样':(diff>0?'比上月多 ':'比上月少 ')+money(Math.abs(diff))):'上月没有记录';
+  return '<div class="main"><div class="card"><div class="card-h"><b>本月支出</b><em>'+monthKey()+'</em>'
+    +'<div class="sp"><button class="btn sm" data-act="exportcsv">导出 CSV</button></div></div>'
     +'<div class="money"><div class="bal">'+money(out)+'<small>支出 / 收入 '+money(inc)+'</small></div>'
+    +'<div class="hint" style="margin-top:6px">'+cmp+(prev.length?'（上月支 '+money(pout)+' · 收 '+money(pinc)+'）':'')+'</div>'
     +'<div style="margin-top:10px">'+catBars('out')+'</div></div></div>'
     +'<div class="stack"><div class="card"><div class="card-h"><b>近 7 天支出</b></div><div class="money">'+moneyBars(7)+'</div></div>'
     +'<div class="card"><div class="card-h"><b>解读</b><em>可选 AI</em>'
     +'<div class="sp"><button class="btn sm" data-act="aireport">生成</button></div></div>'
     +'<div class="money"><div id="aiOut" class="hint">点「生成」让模型读一遍本月账单，写一段白话解读；没填 Key 就只用本地统计。</div></div></div></div></div>';
 }
-
-/* ---------- 设置 ---------- */
 function viewSet(){
   const s=settings();
   return '<div class="main"><div class="card"><div class="card-h"><b>设置</b><em>全部存在本机</em></div><div style="padding:0 16px 16px">'
@@ -1063,12 +1075,16 @@ function openTxn(id){
     +'<button class="btn primary" data-act="closed">关闭</button></div>');
 }
 /* ---- 搜索 / 撤销 / 重复 ---- */
+const NL=String.fromCharCode(10);
 let UNDO=null;
-function snap(){UNDO=JSON.stringify(db);}
-function undoable(){const b=document.querySelector('.undo');if(b)b.classList.toggle('off',!UNDO);}
+const UNDO_STACK=[];const UNDO_MAX=30;
+function snap(){UNDO_STACK.push(JSON.stringify(db));if(UNDO_STACK.length>UNDO_MAX)UNDO_STACK.shift();UNDO=UNDO_STACK[UNDO_STACK.length-1];}
+function undoable(){const b=document.querySelector('.undo');if(b){const on=UNDO_STACK.length>0;b.classList.toggle('off',!on);b.title=on?('撤销上一步（还能退 '+UNDO_STACK.length+' 步）'):'没有可撤销的操作';}}
 function doUndo(){
-  if(!UNDO){toast('没有可撤销的操作');return false;}
-  db=JSON.parse(UNDO);UNDO=null;planAll();persist();applyTheme();render();toast('已撤销');return true;
+  if(!UNDO_STACK.length){toast('没有可撤销的操作');return false;}
+  db=JSON.parse(UNDO_STACK.pop());UNDO=UNDO_STACK[UNDO_STACK.length-1]||null;
+  planAll();persist();applyTheme();render();
+  toast(UNDO_STACK.length?('已撤销（还能退 '+UNDO_STACK.length+' 步）'):'已撤销');return true;
 }
 function doReset(){
   if(!confirm('清空全部任务、课程、目标、流水，变成一张白纸。\n（想留着就先「导出备份」，清空后 5 秒内也能撤销）'))return false;
@@ -1087,7 +1103,7 @@ function toastUndo(msg){
   d.style.cssText='position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#2E3B36;color:#fff;padding:9px 14px;border-radius:10px;font-size:12.5px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;gap:12px;align-items:center;opacity:0;transition:.2s';
   const sp=document.createElement('span');sp.textContent=msg;
   const b=document.createElement('button');b.textContent='撤销';b.style.cssText='color:#8FE3C4;font-weight:600;background:none;border:none;font-size:12.5px';
-  b.onclick=function(){if(UNDO){db=JSON.parse(UNDO);UNDO=null;planAll();persist();render();toast('已撤销');}d.remove();};
+  b.onclick=function(){if(UNDO_STACK.length){db=JSON.parse(UNDO_STACK.pop());UNDO=UNDO_STACK[UNDO_STACK.length-1]||null;}planAll();persist();applyTheme();render();toast('已撤销');d.remove();};
   d.appendChild(sp);d.appendChild(b);document.body.appendChild(d);
   requestAnimationFrame(()=>d.style.opacity='1');
   setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),220);},5000);
@@ -1277,6 +1293,19 @@ function exportICS(){
   toast('已导出，导入手机日历即可响铃');
 }
 function exportJSON(){download('shixu-backup-'+today()+'.json',JSON.stringify(db,null,2),'application/json');}
+function exportCSV(){
+  if(!db.txns.length){toast('还没有流水可导出');return;}
+  const NL=String.fromCharCode(13,10), Q=String.fromCharCode(34);
+  const rows=[['日期时间','类型','金额','分类','账户','备注']];
+  const an=id=>{const a=db.accounts.find(x=>x.id===id);return a?a.name:id;};
+  db.txns.slice().sort((a,b)=>a.ts<b.ts?1:-1).forEach(t=>{
+    const note=(t.note||'').replace(/[\r\n,]/g,' ').split(Q).join("'");
+    rows.push([t.ts,t.type==='in'?'收入':'支出',(t.type==='in'?'+':'-')+Number(t.amount).toFixed(2),t.cat,an(t.acct),note]);
+  });
+  const csv='\ufeff'+rows.map(r=>r.map(c=>Q+String(c)+Q).join(',')).join(NL);
+  download('shixu-liushui-'+today()+'.csv',csv,'text/csv');
+  toast('已导出 '+db.txns.length+' 笔流水');
+}
 async function loadSeed(){
   toast('取课表…');
   try{
@@ -1398,6 +1427,8 @@ function openHelp(){
     ['记账','午饭 15 微信'],
     ['删目标','删掉目标 四级550'],
     ['清理数据','清空数据'],
+    ['导出流水','导出流水（CSV）'],
+    ['清理已完成','清理已完成'],
     ['备份','导出备份'],
     ['恢复','导入备份'],
     ['主题','深色 / 浅色 / 跟随系统'],
@@ -1417,6 +1448,8 @@ function execCommand(txt){
   /* ---------- 系统指令 ---------- */
   if(/^(帮助|怎么用|能做什么|会什么|指令|命令|help)$/i.test(T)){openHelp();return {ok:''};}
   if(/(清空|清除|清掉|重置|恢复出厂|全删)/.test(T)&&/(数据|全部|所有|一切|记录|内容)/.test(T)){doReset();return {ok:''};}
+  if(/(流水|账单|收支)/.test(T)&&/(导出|下载|另存|csv)/i.test(T)){exportCSV();return {ok:''};}
+  if(/^(清理|清除|删掉|清掉|归档)/.test(T)&&/(已完成|完成的|归档)/.test(T)){document.querySelector('[data-act="archdone"]')?document.querySelector('[data-act="archdone"]').click():toast('先去「今日」页，那里才有已完成列表');return {ok:''};}
   if(/^(导出|备份)/.test(T)){exportJSON();return {ok:'备份已导出，去下载里找'};}
   if(/^导入/.test(T)){uploadFile();return {ok:'挑一个文件（账单/日历/备份都行）'};}
   if(/^(撤销|撤回|回退)$/.test(T)){doUndo();return {ok:''};}
@@ -1927,6 +1960,13 @@ document.addEventListener('click',ev=>{
     if(db.accounts.length<=1){toast('至少留一个账户');return;}
     if(db.txns.some(x=>x.acct===id)){toast('这个账户还有流水，先把流水删掉或换账户');return;}
     snap();db.accounts=db.accounts.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('账户已删除');return;
+  }
+  if(act==='exportcsv'){exportCSV();return;}
+  if(act==='archdone'){
+    const n=db.tasks.filter(t=>t.done).length;
+    if(!n){toast('没有已完成的记录');return;}
+    if(!confirm('把 '+n+' 条已完成的记录删掉？'+NL+'（不清流水、不删待办；5 秒内可撤销）'))return;
+    snap();db.tasks=db.tasks.filter(t=>!t.done);planAll();persist();render();toastUndo('已清理 '+n+' 条');return;
   }
   if(act==='deltxn'){snap();db.txns=db.txns.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('已删除');return;}
   if(act==='recon'){
