@@ -132,6 +132,10 @@ html[data-theme="dark"] .card{box-shadow:none}
 
 /* ---------- 拖拽 ---------- */
 .blk{cursor:grab;touch-action:manipulation}
+.blk[data-act="course"]{cursor:pointer}
+body.editing .blk[data-act="course"]{cursor:grab;outline:1.5px dashed var(--mint);outline-offset:-1.5px}
+body.editing .blk[data-act="course"]:hover{outline-style:solid}
+.blk.sel{box-shadow:0 0 0 2px var(--mint)}
 .blk.drag{opacity:.94;z-index:20;box-shadow:0 10px 26px rgba(46,59,54,.2);cursor:grabbing}
 .blk.drag.bad{outline:1.5px solid #E08A78;outline-offset:1px}
 .blk .rez{position:absolute;left:0;right:0;bottom:0;height:9px;cursor:ns-resize}
@@ -277,6 +281,16 @@ const DEFAULT_SETTINGS={
   apiKey:'', baseURL:'https://api.deepseek.com', model:'deepseek-chat',
   theme:'light', seed:true
 };
+function emptyDB(){
+  const t=today(),mon=addDays(t,-(wdOf(t)-1));
+  const s=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  s.semStart=mon; s.theme=settings().theme||'light'; s.seed=false;
+  return {v:1,settings:s,courses:[],tasks:[],goals:[],txns:[],accounts:[
+    {id:'wx',name:'微信',base:0},
+    {id:'ali',name:'支付宝',base:0},
+    {id:'cash',name:'现金',base:0}
+  ]};
+}
 function seed(){
   const t=today(), mon=addDays(t,-(wdOf(t)-1));
   const s=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -351,10 +365,17 @@ function weekIdx(dateKey){
   const diff=Math.round((pdk(dateKey)-pdk(settings().semStart))/864e5);
   return Math.floor(diff/7)+1;
 }
+function cWeeks(c){
+  const t=Number(settings().weeks)||18;
+  const w1=Math.max(1,Number(c.w1)||1), w2=Math.min(t,Number(c.w2)||t);
+  return [w1,Math.max(w1,w2)];
+}
 function courseOn(c,dateKey){
   if(c.wd!==wdOf(dateKey))return false;
   const w=weekIdx(dateKey);
   if(w<1||w>settings().weeks)return false;
+  const wk=cWeeks(c);
+  if(w<wk[0]||w>wk[1])return false;
   if(c.parity==='odd'&&w%2===0)return false;
   if(c.parity==='even'&&w%2===1)return false;
   return true;
@@ -466,7 +487,7 @@ function planAll(){
 }
 
 /* ============ 状态 ============ */
-const S={view:'week',weekOff:0,sel:null,modal:null};
+const S={view:'week',weekOff:0,sel:null,modal:null,editMode:false,hintDone:false};
 const TABS=[['week','课程表'],['today','今日'],['plan','规划'],['money','记账'],['report','报表'],['set','设置']];
 /* ============ 渲染 ============ */
 function render(){
@@ -479,6 +500,7 @@ function render(){
   el.innerHTML = (S.view==='week'?viewWeek():S.view==='today'?viewToday():S.view==='plan'?viewPlan()
     :S.view==='money'?viewMoney():S.view==='report'?viewReport():viewSet()) + cmdBar();
   if(S.view==='week')bindGrid();
+  document.body.classList.toggle('editing',!!S.editMode);
 }
 function chip(t){const b=bandOf(t);return '<span class="chip '+BAND_CHIP[b]+'">P'+b+'</span>';}
 function todayTasks(){
@@ -491,12 +513,36 @@ function colHTML(d,H,ds,total){
   const blocks=[];
   db.courses.forEach((c,ci)=>{if(courseOn(c,d))blocks.push({k:'c',s:mins(c.s),e:mins(c.e),c,ci});});
   db.tasks.forEach(t=>{(t.plan||[]).forEach(p=>{if(p.d===d)blocks.push({k:'t',s:mins(p.s),e:mins(p.e),t});});});
+  /* 时间重叠就分栏并排，别互相盖住 */
+  const sorted=blocks.slice().sort((a,b)=>a.s-b.s||b.e-a.e);
+  let laneEnds=[],cluster=[],clusterEnd=-1;
+  const flush=()=>{
+    const tot=Math.max.apply(null,cluster.map(x=>x.lane))+1;
+    cluster.forEach(x=>{x.tot=tot;});
+    cluster=[];laneEnds=[];
+  };
+  sorted.forEach(b=>{
+    if(cluster.length&&b.s>=clusterEnd)flush();
+    let i=0;while(i<laneEnds.length&&laneEnds[i]>b.s)i++;
+    b.lane=i;laneEnds[i]=b.e;
+    cluster.push(b);clusterEnd=Math.max(clusterEnd,b.e);
+  });
+  if(cluster.length)flush();
   const inner=blocks.map(b=>{
     const top=(b.s-ds)/60*H,h=Math.max(18,(b.e-b.s)/60*H-1.5),tiny=h<34?' tiny':'';
     const rz=h>=26?'<span class="rez"></span>':'';
-    if(b.k==='c')return '<div class="blk '+TONE[b.ci%3]+tiny+'" data-act="course" data-id="'+b.c.id+'" style="top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+b.c.s+'–'+b.c.e+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
+    let laneCss='';
+    if(b.tot&&b.tot>1){
+      laneCss='right:auto;width:calc((100% - 6px)/'+b.tot+' - 2px);left:calc(3px + (100% - 6px)/'+b.tot+'*'+b.lane+');';
+    }
+    if(b.k==='c'){
+      const cw=cWeeks(b.c), full=(cw[0]===1&&cw[1]>=(Number(settings().weeks)||18));
+      const wtag=full?'':(' · '+(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'));
+      const tip=b.c.name+' '+b.c.s+'–'+b.c.e+(b.c.loc?' · '+b.c.loc:'')+(full?' · 每周':wtag)+(b.c.parity==='odd'?' · 单周':b.c.parity==='even'?' · 双周':'');
+      return '<div class="blk '+TONE[b.ci%3]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+b.c.s+'–'+b.c.e+wtag+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
+    }
     const band=bandOf(b.t);
-    return '<div class="blk '+BAND_CLS[band]+tiny+(b.t.done?' done':'')+'" data-act="task" data-id="'+b.t.id+'" style="top:'+top+'px;height:'+h+'px"><b>'+esc(b.t.title)+'</b><em>'+hhmm(b.s)+'–'+hhmm(b.e)+'</em>'+rz+'</div>';
+    return '<div class="blk '+BAND_CLS[band]+tiny+(b.t.done?' done':'')+'" data-act="task" data-id="'+b.t.id+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.t.title)+'</b><em>'+hhmm(b.s)+'–'+hhmm(b.e)+'</em>'+rz+'</div>';
   }).join('');
   const nm=nowMin();
   const nl=(d===today()&&nm>=ds&&nm<=mins(settings().dayEnd))?'<div class="nowline" style="top:'+((nm-ds)/60*H)+'px"></div>':'';
@@ -509,13 +555,14 @@ function viewWeek(){
   const lines=[];for(let m=ds;m<=de;m+=60)lines.push('<span class="lb" style="top:'+((m-ds)/60*H)+'px">'+hhmm(m)+'</span>');
   const b0=pdk(days[0]),b1=pdk(days[6]);
   return '<div class="main weekview"><div class="card">'
-    +'<div class="card-h"><b>'+(S.weekOff===0?'本周':S.weekOff===1?'下周':S.weekOff===-1?'上周':'第'+weekIdx(days[0])+'周')+'</b><em>'+(b0.getMonth()+1)+'月'+b0.getDate()+'日 – '+(b1.getMonth()+1)+'月'+b1.getDate()+'日</em>'
-    +'<div class="sp wknav"><button class="btn sm" data-act="newcourse">+ 课程</button>'
+    +'<div class="card-h"><b>'+(S.weekOff===0?'本周':S.weekOff===1?'下周':S.weekOff===-1?'上周':'第'+weekIdx(days[0])+'周')+'</b><em>'+(b0.getMonth()+1)+'月'+b0.getDate()+'日 – '+(b1.getMonth()+1)+'月'+b1.getDate()+'日'
+    +(db.courses.length?'':' · 还没有课程，右上「+ 课程」加一门')+'</em>'
+    +'<div class="sp wknav"><button class="btn sm'+(S.editMode?' primary':'')+'" data-act="editing">'+(S.editMode?'完成编辑':'编辑')+'</button>'
+    +'<button class="btn sm" data-act="newcourse">+ 课程</button>'
     +'<button class="btn icon" data-act="wk" data-n="-1">‹</button>'
     +'<button class="btn sm" data-act="wk" data-n="0">本周</button>'
     +'<button class="btn icon" data-act="wk" data-n="1">›</button></div></div>'
-    +'<div class="weekwrap"><div class="days" style="--hh:'+H+'px">'
-    +'<div></div>'
+    +'<div class="weekwrap"><div class="days" style="--hh:'+H+'px">'    +'<div></div>'
     +days.map((d,i)=>'<div class="dhead'+(d===today()?' today':'')+([6,7].includes(i+1)?' we':'')+'">周'+WEEK[i]+'<b>'+pdk(d).getDate()+'</b></div>').join('')
     +'<div class="hours" style="height:'+total+'px">'+lines.join('')+'</div>'
     +days.map(d=>colHTML(d,H,ds,total)).join('')
@@ -566,6 +613,8 @@ function onBlkDown(e){
   if(e.pointerType==='mouse'&&e.button!==0)return;
   const el=e.currentTarget,col=el.closest('.col');
   if(!col)return;
+  /* 课程块平时锁住，进编辑模式才可拖/可改，防误触 */
+  if(el.dataset.act==='course'&&!S.editMode)return;
   DR={el,col,d0:col.dataset.d,id:el.dataset.id,kind:el.dataset.act==='course'?'c':'t',
       mode:(e.target.classList&&e.target.classList.contains('rez'))?'resize':'move',
       y0:e.clientY,x0:e.clientX,top0:parseFloat(el.style.top)||0,h0:parseFloat(el.style.height)||20,
@@ -878,9 +927,11 @@ function openCourse(c){
     +'<div class="field"><label>地点</label><input id="cLoc" type="text" value="'+esc(v.loc||'')+'" placeholder="教三 201"></div>'
     +'<div class="field"><label>开始</label><input id="cS" type="time" value="'+v.s+'"></div>'
     +'<div class="field"><label>结束</label><input id="cE" type="time" value="'+v.e+'"></div>'
-    +'<div class="field"><label>周次</label><select id="cParity">'+pSel+'</select></div>'
+    +'<div class="field"><label>起周</label><input id="cW1" type="number" min="1" max="30" value="'+(Number(v.w1)||1)+'"></div>'
+    +'<div class="field"><label>止周</label><input id="cW2" type="number" min="1" max="30" value="'+(Number(v.w2)||Number(settings().weeks)||18)+'"></div>'
+    +'<div class="field"><label>单双周</label><select id="cParity">'+pSel+'</select></div>'
     +'</div>'
-    +'<div class="hint" style="margin-top:10px">在周视图里直接拖动课程块也能改时间；拖底部改下课时间。</div>'
+    +'<div class="hint" style="margin-top:10px">课只在「起周–止周」这段周次里出现。想看别的周，用周视图右上角 ‹ › 翻。</div>'
     +'<div class="acts">'+(c?'<button class="btn" data-act="delcourse" data-id="'+c.id+'" style="margin-right:auto;color:#C0674F">删除</button>':'')
     +'<button class="btn" data-act="closed">取消</button>'
     +'<button class="btn primary" data-act="savecourse" data-id="'+(c?c.id:'')+'">保存</button></div>');
@@ -914,10 +965,10 @@ function doUndo(){
   db=JSON.parse(UNDO);UNDO=null;planAll();persist();applyTheme();render();toast('已撤销');return true;
 }
 function doReset(){
-  if(!confirm('会清空全部任务、课程、流水。确定？\n（想留一份就先「导出备份」）'))return false;
+  if(!confirm('清空全部任务、课程、目标、流水，变成一张白纸。\n（想留着就先「导出备份」，清空后 5 秒内也能撤销）'))return false;
   snap();
-  localStorage.removeItem(LS);loadDB();planAll();persist();applyTheme();render();
-  toastUndo('已重置');return true;
+  db=emptyDB();S.editMode=false;S.sel=null;persist();planAll();applyTheme();render();
+  toastUndo('已清空');return true;
 }
 function toastUndo(msg){
   const d=document.createElement('div');
@@ -1285,15 +1336,21 @@ function addCourseFromText(s){
   const tm=rest.match(/(\d{1,2}:\d{2})\s*[-–~至]\s*(\d{1,2}:\d{2})/);
   let st='08:00',en='09:40';
   if(tm){st=tm[1];en=tm[2];rest=rest.replace(tm[0],' ');}
+  let w1=1,w2=Number(settings().weeks)||18,par='all';
+  const wk=rest.match(/(\d{1,2})\s*[-–~到至]\s*(\d{1,2})\s*周/);
+  if(wk){w1=+wk[1];w2=+wk[2];rest=rest.replace(wk[0],' ');}
+  else{const wm=rest.match(/第?(\d{1,2})\s*周/);if(wm){w1=w2=+wm[1];rest=rest.replace(wm[0],' ');}}
+  if(/单周/.test(rest)){par='odd';rest=rest.replace(/单周/g,' ');}
+  else if(/双周/.test(rest)){par='even';rest=rest.replace(/双周/g,' ');}
   const toks=rest.split(/\s+/).filter(Boolean);
   let loc='';
   const li=toks.findIndex(x=>/(楼|教|馆|中心|室|区)/.test(x)&&x.length<=12);
   if(li>=0){loc=toks[li];toks.splice(li,1);}
   const name=toks.join(' ').trim();
   if(!name)return {err:'课程得有个名字'};
-  db.courses.push({id:uid(),name,wd:a.d?wdOf(a.d):1,s:st,e:en,loc,parity:'all'});
+  db.courses.push({id:uid(),name,wd:a.d?wdOf(a.d):1,s:st,e:en,loc,parity:par,w1,w2});
   persist();render();
-  return {ok:'加了课程「'+name+'」周'+(a.d?WEEK[wdOf(a.d)-1]:'一')+' '+st+'–'+en};
+  return {ok:'加了课程「'+name+'」周'+(a.d?WEEK[wdOf(a.d)-1]:'一')+' '+st+'–'+en+' · '+(w1===w2?w1+'周':w1+'–'+w2+'周')+(par==='odd'?' 单周':par==='even'?' 双周':'')};
 }
 function runCommand(){
   const el=$('#cmdIn');
@@ -1442,8 +1499,9 @@ function parseICS(text){
     const m2=(e.end||'').match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
     const d=m[1]+'-'+m[2]+'-'+m[3],s=m[4]+':'+m[5];
     const en=m2?m2[4]+':'+m2[5]:hhmm(mins(s)+60);
+    const um=(e.rrule||'').match(/UNTIL=(\d{8})/);
     return {d,s,e:en>s?en:hhmm(mins(s)+60),summary:(e.summary||'日程').trim(),loc:(e.loc||'').trim(),
-      weekly:/FREQ=WEEKLY/i.test(e.rrule||''),biweekly:/INTERVAL=2/.test(e.rrule||'')};
+      weekly:/FREQ=WEEKLY/i.test(e.rrule||''),biweekly:/INTERVAL=2/.test(e.rrule||''),until:um?um[1]:null};
   }).filter(Boolean);
 }
 function importCalText(text){
@@ -1454,8 +1512,13 @@ function importCalText(text){
     '找到 '+evs.length+' 个日程：可设为课程 '+weekly.length+' 个、单次时间块 '+single.length+' 个<br>'
     +'<span class="hint">'+esc(evs.slice(0,4).map(e=>e.summary+' '+e.d.slice(5)+' '+e.s).join('；'))+'</span>',
     ()=>{
-      weekly.forEach(e=>db.courses.push({id:uid(),name:e.summary,wd:wdOf(e.d),s:e.s,e:e.e,loc:e.loc,
-        parity:e.biweekly?'odd':'all'}));
+      weekly.forEach(e=>{
+        const w1=Math.max(1,weekIdx(e.d));
+        let w2=Number(settings().weeks)||18;
+        if(e.until){const u=e.until;w2=Math.min(w2,weekIdx(u.slice(0,4)+'-'+u.slice(4,6)+'-'+u.slice(6,8)));}
+        db.courses.push({id:uid(),name:e.summary,wd:wdOf(e.d),s:e.s,e:e.e,loc:e.loc,w1,w2,
+          parity:e.biweekly?(w1%2?'odd':'even'):'all'});
+      });
       single.forEach(e=>db.tasks.push({id:uid(),title:e.summary,est:Math.max(15,mins(e.e)-mins(e.s)),
         due:e.d,dueTime:'23:59',pri:1,split:true,done:false,note:'来自日历',pin:{d:e.d,s:e.s}}));
       planAll();persist();render();toast('已导入 '+evs.length+' 个');
@@ -1574,14 +1637,30 @@ document.addEventListener('click',ev=>{
   if(act==='wk'){const n=+el.dataset.n;S.weekOff=n===0?0:S.weekOff+n;render();return;}
   if(act==='newtask'){openTask(null,{});return;}
   if(act==='task'){ev.stopPropagation();const t=db.tasks.find(x=>x.id===id);if(t){S.sel=id;openTask(t);}return;}
-  if(act==='course'){const c=db.courses.find(x=>x.id===id);if(c)openCourse(c);return;}
+  if(act==='course'){
+    const c=db.courses.find(x=>x.id===id);if(!c)return;
+    if(!S.editMode){
+      S.sel=id;render();
+      if(!S.hintDone){S.hintDone=true;toast('课程锁着呢，点右上「编辑」才能改');}
+      return;
+    }
+    openCourse(c);return;
+  }
+  if(act==='editing'){
+    S.editMode=!S.editMode;
+    document.body.classList.toggle('editing',S.editMode);
+    render();
+    toast(S.editMode?'编辑模式：可以拖动 / 点开课程改了':'已退出编辑');
+    return;
+  }
   if(act==='newcourse'){openCourse(null);return;}
   if(act==='savecourse'){
     const name=$('#cName').value.trim();
     if(!name){toast('课程得有个名字');return;}
     const wd=+$('#cWd').value,s=$('#cS').value,e=$('#cE').value;
     if(mins(e)<=mins(s)){toast('结束时间要晚于开始');return;}
-    const data={name,wd,s,e,loc:$('#cLoc').value.trim(),parity:$('#cParity').value};
+    const data={name,wd,s,e,loc:$('#cLoc').value.trim(),parity:$('#cParity').value,
+      w1:Math.max(1,+$('#cW1').value||1),w2:Math.max(1,+$('#cW2').value||Number(settings().weeks)||18)};
     const c=id?db.courses.find(x=>x.id===id):null;
     if(c)Object.assign(c,data);else db.courses.push(Object.assign({id:uid()},data));
     planAll();persist();closeModal();render();toast(c?'课程已改':'课程已加');return;
