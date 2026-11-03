@@ -867,6 +867,7 @@ function viewSet(){
     +'<button class="btn" data-act="exportjson">导出备份</button>'
     +'<button class="btn" data-act="importjson">导入备份</button>'
     +'<button class="btn" data-act="exportics">导出日历 .ics</button>'
+    +'<button class="btn" data-act="loadseed" style="border-color:var(--mint);color:#2F7C63">一键载入我的课表 + 作息</button>'
     +'</div>'
     +'<div class="hint" style="margin-top:14px">Key 只存在这台设备的浏览器里，不上传任何服务器。分享给朋友时给他们 HTML 文件，各自填各自的 Key（或者不填，纯本地也能记账排程）。</div>'
     +'</div></div>'
@@ -986,18 +987,20 @@ function toastUndo(msg){
   requestAnimationFrame(()=>d.style.opacity='1');
   setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),220);},5000);
 }
-const REPS=[['','不重复'],['daily','每天'],['workdays','工作日'],['weekly','每周'],['monthly','每月']];
+const REPS=[['','不重复'],['daily','每天'],['workdays','工作日'],['every3','每 3 天'],['weekly','每周'],['monthly','每月']];
 function nextDueOf(t){
   if(t.repeat==='daily')return addDays(t.due,1);
   if(t.repeat==='weekly')return addDays(t.due,7);
   if(t.repeat==='monthly')return addDays(t.due,30);
+  if(t.repeat==='every3')return addDays(t.due,3);
   if(t.repeat==='workdays'){let n=addDays(t.due,1);while([6,7].includes(wdOf(n)))n=addDays(n,1);return n;}
   return null;
 }
 function spawnRepeat(t){
   const nd=nextDueOf(t);if(!nd)return;
   db.tasks.push({id:uid(),title:t.title,est:t.est,due:nd,dueTime:t.dueTime||'23:59',pri:t.pri,
-    split:t.split,repeat:t.repeat,done:false,doneAt:'',note:t.note,pin:null,plan:[],goalId:t.goalId||''});
+    split:t.split,repeat:t.repeat,done:false,doneAt:'',note:t.note,
+    pin:t.pin?{d:nd,s:t.pin.s}:null,plan:[],goalId:t.goalId||''});
   toast('下一次：'+nd.slice(5));
 }
 function openSearch(){
@@ -1132,8 +1135,28 @@ function exportICS(){
   toast('已导出，导入手机日历即可响铃');
 }
 function exportJSON(){download('shixu-backup-'+today()+'.json',JSON.stringify(db,null,2),'application/json');}
-function importJSON(){
-  const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+async function loadSeed(){
+  toast('取课表…');
+  try{
+    const r=await fetch('seed.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('取不到 seed.json（'+r.status+'）');
+    const d=await r.json();
+    const nc=(d.courses||[]).length, nt=(d.tasks||[]).length;
+    previewImport('载入我的课表 + 作息',
+      '会放入 <b>'+nc+' 门课</b>、<b>'+nt+' 个习惯/安排</b>。<br>'
+      +'<span class="hint">你手填的课程和任务会被替换掉，记账流水和设置不动。想留旧的就先「导出备份」。</span>',
+      ()=>{
+        if(nc)db.courses=d.courses;
+        if(nt)db.tasks=d.tasks.map(t=>Object.assign({},t,{id:uid(),plan:[],late:false,overflow:false}));
+        if(d.settings&&d.settings.semStart)db.settings.semStart=d.settings.semStart;
+        if(d.settings&&d.settings.weeks)db.settings.weeks=d.settings.weeks;
+        planAll();persist();render();toast('载入完成：'+nc+' 门课');
+      });
+  }catch(e){
+    toast('载入失败：'+e.message);
+  }
+}
+function importJSON(){  const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
   inp.onchange=()=>{
     const f=inp.files[0];if(!f)return;
     const rd=new FileReader();
@@ -1742,6 +1765,7 @@ document.addEventListener('click',ev=>{
   }
   if(act==='exportjson'){exportJSON();return;}
   if(act==='importjson'){importJSON();return;}
+  if(act==='loadseed'){loadSeed();return;}
   if(act==='exportics'){exportICS();return;}
   if(act==='aireport'){aiReport();return;}
   if(act==='reset'){doReset();return;}
