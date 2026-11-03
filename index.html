@@ -103,8 +103,8 @@ html[data-theme="dark"] .cmdin{background:#1B2421}
 .blk{position:absolute;left:3px;right:3px;border-radius:9px;padding:4px 6px;overflow:hidden;
   font-size:10.5px;line-height:1.3;border-left:3px solid;z-index:2;cursor:pointer;transition:box-shadow .15s}
 .blk:hover{box-shadow:0 2px 10px rgba(46,59,54,.12);z-index:3}
-.blk b{display:block;font-weight:600;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.blk em{font-style:normal;display:block;font-size:9.5px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk b{display:block;font-weight:600;font-size:10.5px;white-space:normal;word-break:break-word;overflow:hidden}
+.blk em{font-style:normal;display:block;font-size:9.5px;opacity:.85;white-space:normal;word-break:break-word;overflow:hidden}
 .blk.done{opacity:.42;text-decoration:line-through}
 .blk.tiny{padding:3px 6px}
 .blk.tiny em{display:none}
@@ -450,7 +450,7 @@ function ensureRepeat(horizon){
   horizon=horizon||14;
   const lim=addDays(today(),horizon);
   let added=0;
-  db.tasks.filter(t=>t.repeat&&!t.done).forEach(t=>{
+  db.tasks.filter(t=>t.repeat&&!t.done&&!t.fix).forEach(t=>{
     let cur=t,guard=0;
     while(guard++<40){
       const nd=nextDueOf(cur);
@@ -473,7 +473,7 @@ function planAll(){
   db.tasks.forEach(t=>{t.plan=[];t.late=false;});
   const occ={};
   const get=d=>occ[d]||(occ[d]=baseBusy(d,null));
-  const list=db.tasks.filter(t=>!t.done);
+  const list=db.tasks.filter(t=>!t.done&&!t.fix);
   list.filter(t=>t.pin).forEach(t=>{
     const d=t.pin.d,e=mins(t.pin.s)+t.est;
     t.plan.push({d,s:t.pin.s,e:hhmm(e),auto:false});
@@ -526,8 +526,16 @@ function render(){
   document.body.classList.toggle('editing',!!S.editMode);
 }
 function chip(t){const b=bandOf(t);return '<span class="chip '+BAND_CHIP[b]+'">P'+b+'</span>';}
+function fixTasksFor(d){
+  return db.tasks.filter(t=>!t.done&&t.fix&&(t.days||[]).indexOf(wdOf(d))>=0);
+}
+function fixTime(t){
+  const st=mins((t.pin&&t.pin.s)||'09:00');
+  return {s:hhmm(st),e:hhmm(st+(t.est||60))};
+}
 function todayTasks(){
   return db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===today()))
+    .concat(fixTasksFor(today()))
     .sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
 }
 
@@ -536,6 +544,11 @@ function colHTML(d,H,ds,total){
   const blocks=[];
   db.courses.forEach((c,ci)=>{if(courseOn(c,d))blocks.push({k:'c',s:mins(c.s),e:mins(c.e),c,ci});});
   db.tasks.forEach(t=>{(t.plan||[]).forEach(p=>{if(p.d===d)blocks.push({k:'t',s:mins(p.s),e:mins(p.e),t});});});
+  db.tasks.forEach(t=>{
+    if(!t.fix||!(t.days||[]).length||t.days.indexOf(wdOf(d))<0)return;
+    const st=mins((t.pin&&t.pin.s)||'09:00');
+    blocks.push({k:'f',s:st,e:st+(t.est||60),t});
+  });
   /* 时间重叠就分栏并排，别互相盖住 */
   const sorted=blocks.slice().sort((a,b)=>a.s-b.s||b.e-a.e);
   let laneEnds=[],cluster=[],clusterEnd=-1;
@@ -565,6 +578,10 @@ function colHTML(d,H,ds,total){
       return '<div class="blk '+TONE[b.ci%3]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+(full?'每周':(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'))+(b.c.parity==='odd'?' 单':b.c.parity==='even'?' 双':'')+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
     }
     const band=bandOf(b.t);
+    if(b.k==='f'){
+      const fd=(b.t.doneDays||[]).indexOf(d)>=0;
+      return '<div class="blk '+BAND_CLS[band]+tiny+(fd?' done':'')+'" data-act="fix" data-id="'+b.t.id+'" data-d="'+d+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.t.title)+'</b><em>'+hhmm(b.s)+'–'+hhmm(b.e)+(b.t.note?' · '+esc(b.t.note):'')+'</em>'+rz+'</div>';
+    }
     return '<div class="blk '+BAND_CLS[band]+tiny+(b.t.done?' done':'')+'" data-act="task" data-id="'+b.t.id+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.t.title)+'</b><em>'+hhmm(b.s)+'–'+hhmm(b.e)+'</em>'+rz+'</div>';
   }).join('');
   const nm=nowMin();
@@ -706,6 +723,13 @@ function rail(){
   }
   const flow=list.length?list.map(t=>{
     const b=bandOf(t),p=(t.plan||[]).find(x=>x.d===day);
+    if(t.fix){
+      const ft=fixTime(t),fd=(t.doneDays||[]).indexOf(day)>=0;
+      return '<div class="frow" data-act="fix" data-id="'+t.id+'" data-d="'+day+'">'
+        +'<div class="ck'+(fd?' on':'')+'" data-act="fixdone" data-id="'+t.id+'" data-d="'+day+'">'+(fd?'✓':'')+'</div>'
+        +'<div class="ftxt"><b>'+(fd?'<s>'+esc(t.title)+'</s>':esc(t.title))+'</b><span>'+ft.s+'–'+ft.e+' · 固定 '+WD[wdOf(day)-1]+(t.note?' · '+esc(t.note):'')+'</span></div>'
+        +'<span class="chip '+BAND_CHIP[b]+'">P'+b+'</span></div>';
+    }
     return '<div class="frow" data-act="task" data-id="'+t.id+'">'
       +'<div class="ck'+(t.done?' on':'')+'" data-act="toggle" data-id="'+t.id+'">'+(t.done?'✓':'')+'</div>'
       +'<div class="ftxt"><b>'+(t.done?'<s>'+esc(t.title)+'</s>':esc(t.title))+'</b><span>'+(p?hhmm(mins(p.s))+'–'+p.e:'待排')+' · 截止 '+(t.due||'')+(t.dueTime?' '+t.dueTime:'')+'</span></div>'
@@ -747,14 +771,21 @@ function bars14(){
 /* ---------- 今日 ---------- */
 function viewToday(){
   let day=today(),moved=false;
-  let list=db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===day));
+  let list=db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===day)).concat(fixTasksFor(day));
   if(!list.length&&todayFree()<0.3){
     day=addDays(today(),1);moved=true;
-    list=db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===day));
+    list=db.tasks.filter(t=>!t.done&&(t.plan||[]).some(p=>p.d===day)).concat(fixTasksFor(day));
   }
   list.sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
   const rows=list.map(t=>{
     const b=bandOf(t),p=(t.plan||[]).find(x=>x.d===day),sc=scoreTask(t);
+    if(t.fix){
+      const ft=fixTime(t),fd=(t.doneDays||[]).indexOf(day)>=0;
+      return '<div class="frow" data-act="fix" data-id="'+t.id+'" data-d="'+day+'">'
+        +'<div class="ck'+(fd?' on':'')+'" data-act="fixdone" data-id="'+t.id+'" data-d="'+day+'">'+(fd?'✓':'')+'</div>'
+        +'<div class="ftxt"><b>'+(fd?'<s>'+esc(t.title)+'</s>':esc(t.title))+'</b><span>'+ft.s+'–'+ft.e+' · 固定 '+WD[wdOf(day)-1]+' · '+(t.est||60)+'min</span></div>'
+        +'<span class="tag">'+sc.score+'</span><span class="chip '+BAND_CHIP[b]+'">P'+b+'</span></div>';
+    }
     return '<div class="frow" data-act="task" data-id="'+t.id+'">'
       +'<div class="ck'+(t.done?' on':'')+'" data-act="toggle" data-id="'+t.id+'">'+(t.done?'✓':'')+'</div>'
       +'<div class="ftxt"><b>'+esc(t.title)+'</b><span>'+(p?hhmm(mins(p.s))+'–'+p.e:'未排入')+' · '+(t.est>=60?(t.est/60).toFixed(1)+'h':t.est+'min')+' · '+(t.note?esc(t.note):'截止 '+t.due+' '+(t.dueTime||''))+'</span></div>'
@@ -795,7 +826,7 @@ function viewPlan(){
       +'<button class="btn sm" data-act="splitgoal" data-id="'+g.id+'" title="让 AI 拆成待办">拆任务</button>'
       +'<span class="tag">'+pct+'%</span></div>';
   }).join('');
-  const pend=db.tasks.filter(t=>!t.done).sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
+  const pend=db.tasks.filter(t=>!t.done&&!t.fix).sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
   const LIMIT=12;
   const shown=S.planAll?pend:pend.slice(0,LIMIT);
   const rows=shown.map(t=>{
@@ -936,8 +967,13 @@ function openTask(t,preset){
     +'<div class="field"><label>截止时间</label><input id="tDueTime" type="time" value="'+(v.dueTime||'23:59')+'"></div>'
     +'</div>'
     +'<div class="field" style="margin-top:10px"><label>手工优先级</label><div class="seg" id="tPri">'+priSeg+'</div></div>'
-    +'<div class="field" style="margin-top:10px"><label>重复（做完自动排下一次）</label><div class="seg" id="tRep">'
-    +REPS.map(r=>'<button data-act="rep" data-v="'+r[0]+'" class="'+((v.repeat||'')===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div></div>'
+    +'<div class="field" style="margin-top:10px"><label>重复（自动铺两周）</label><div class="seg" id="tRep">'
+    +REPS.map(r=>'<button data-act="rep" data-v="'+r[0]+'" class="'+((v.repeat&&v.repeat!=='custom'&&(v.repeat||'')===r[0])?'on':'')+'">'+r[1]+'</button>').join('')+'</div></div>'
+    +'<div class="field" style="margin-top:10px"><label>或固定在每周的哪几天（可多选，不铺待办）</label><div class="seg" id="tDays">'
+    +[1,2,3,4,5,6,7].map(i=>'<button data-act="day" data-v="'+i+'" class="'+(((v.days||[]).indexOf(i)>=0)?'on':'')+'">'+WD[i-1].slice(1)+'</button>').join('')+'</div>'
+    +'<div class="row" style="margin-top:6px"><label class="hint">固定几点</label><input id="tFixStart" type="time" style="max-width:130px" value="'+((v.pin&&v.pin.s)||'20:00')+'"></div>'
+    +'<div class="hint">勾了这里就变成「固定块」：只在勾选的那天出现，不生成待办；上面的「重复」会被清空。</div></div>'
+    +'<input type="hidden" id="tDaysVal" value="'+((v.days||[]).join(','))+'">'
     +'<div class="field" style="margin-top:10px"><label>备注</label><input id="tNote" type="text" value="'+esc(v.note)+'" placeholder="第三章 / 交给老师"></div>'
     +'<div class="row" style="margin-top:10px"><label class="hint" style="display:flex;gap:6px;align-items:center"><input id="tSplit" type="checkbox" '+(v.split?'checked':'')+' style="width:auto">允许拆成两段排</label></div>'
     +(pins?'<div class="preview" style="margin-top:10px">已指定从 '+pins.d+' '+pins.s+' 开始，保存后固定在这个位置。</div>':'')
@@ -945,6 +981,21 @@ function openTask(t,preset){
     +'<div class="acts">'+(t?'<button class="btn" data-act="deltask" data-id="'+t.id+'" style="margin-right:auto;color:#C0674F">删除</button>':'')
     +'<button class="btn" data-act="closed">取消</button><button class="btn primary" data-act="savetask">保存</button></div>');
   setTimeout(()=>{const e=$('#tTitle');if(e)e.focus();},50);
+}
+function openCourseView(c){
+  const cw=cWeeks(c), full=(cw[0]===1&&cw[1]>=(Number(settings().weeks)||18));
+  const wk=full?'每周':(cw[0]===cw[1]?cw[0]+' 周':cw[0]+'–'+cw[1]+' 周');
+  const par=c.parity==='odd'?' · 单周':c.parity==='even'?' · 双周':'';
+  modal('<h3>上课信息<button class="x" data-act="closed">×</button></h3>'
+    +'<div class="preview" style="font-size:13px;line-height:1.9">'
+    +'<div><b style="font-size:15px">'+esc(c.name)+'</b></div>'
+    +'<div>时间　'+WD[c.wd-1]+' '+c.s+'–'+c.e+'</div>'
+    +'<div>周次　'+wk+par+'</div>'
+    +'<div>地点　'+esc(c.loc||'—')+'</div>'
+    +'</div>'
+    +'<div class="hint" style="margin-top:8px">现在是只读。要改就点右上角「编辑」解锁，再点这个块。</div>'
+    +'<div class="acts"><button class="btn" data-act="closed">关闭</button>'
+    +'<button class="btn primary" data-act="editcourse" data-id="'+c.id+'">去编辑</button></div>');
 }
 function openCourse(c){
   const v=c||{name:'',wd:1,s:'08:00',e:'09:40',loc:'',parity:'all'};
@@ -1031,6 +1082,43 @@ function spawnRepeat(t){
     split:t.split,repeat:t.repeat,done:false,doneAt:'',note:t.note,
     pin:t.pin?{d:nd,s:t.pin.s}:null,plan:[],goalId:t.goalId||''});
   toast('下一次：'+nd.slice(5));
+}
+function toggleDayChip(el){
+  el.classList.toggle('on');
+  const box=$('#tDaysVal');if(!box)return;
+  const on=[...document.querySelectorAll('#tDays button.on')].map(b=>+b.dataset.v).sort((a,b)=>a-b);
+  box.value=on.join(',');
+  if(on.length){
+    const r=$('#tRep');
+    if(r)[...r.querySelectorAll('button.on')].forEach(b=>b.classList.remove('on'));
+  }
+}
+function toggleFix(id,d){
+  d=d||today();
+  const t=db.tasks.find(x=>x.id===id);if(!t)return;
+  t.doneDays=t.doneDays||[];
+  const i=t.doneDays.indexOf(d);
+  if(i>=0)t.doneDays.splice(i,1);else t.doneDays.push(d);
+  persist();render();
+  toast(i>=0?'已取消完成':'完成了「'+t.title+'」');
+}
+function openFix(id,d){
+  d=d||today();
+  const t=db.tasks.find(x=>x.id===id);if(!t)return;
+  const done=(t.doneDays||[]).indexOf(d)>=0;
+  const ds=(t.days||[]).slice().sort().map(x=>WD[x-1]).join('、');
+  const st=(t.pin&&t.pin.s)||'09:00';
+  modal('<h3>'+esc(t.title)+'<button class="x" data-act="closed">×</button></h3>'
+    +'<div class="preview" style="font-size:13px;line-height:1.9">'
+    +'<div>固定　'+ds+' '+st+'–'+hhmm(mins(st)+(t.est||60))+'</div>'
+    +'<div>时长　'+(t.est||60)+' 分钟'+(t.note?' · '+esc(t.note):'')+'</div>'
+    +'<div>今天　'+(done?'已完成 ✓':'还没做')+'</div>'
+    +'</div>'
+    +'<div class="hint" style="margin-top:8px">这是固定块，不会生出一堆待办；只在勾选的那几天出现。</div>'
+    +'<div class="acts"><button class="btn" data-act="fixdone" data-id="'+t.id+'" data-d="'+d+'">'
+    +(done?'取消完成':'标记今天完成')+'</button>'
+    +'<button class="btn" data-act="task" data-id="'+t.id+'">改设置</button>'
+    +'<button class="btn primary" data-act="closed">关闭</button></div>');
 }
 function openSearch(){
   modal('<h3>搜索<button class="x" data-act="closed">×</button></h3>'
@@ -1218,6 +1306,7 @@ function cmdBar(){
     +'<div class="hint">Enter 执行 · 加任务 / 挪时间 / 完成 / 记账 / 加课 / 目标 都能说</div></div>';
 }
 
+const WD=['周一','周二','周三','周四','周五','周六','周日'];
 const CNWD={'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':7,'天':7,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7};
 function pad2(n){return String(n).padStart(2,'0');}
 function mkDate(y,m,d){return y+'-'+pad2(m)+'-'+pad2(d);}
@@ -1392,11 +1481,12 @@ function execCommand(txt){
   else if(/每\s*3\s*天|每三天/.test(txt))rep='every3';
   else if(/每\s*周|每周|weekly/.test(txt))rep='weekly';
   else if(/每\s*月|每月/.test(txt))rep='monthly';
-  db.tasks.push({id:uid(),title,est:d0.min||60,due,dueTime:tm,pri:pri==null?1:pri,split:true,
+  let title2=title.replace(/^(每(个|天|日|周|月|次|天早上|晚上)?|工作日)\s*/,'').trim()||title;
+  db.tasks.push({id:uid(),title:title2,est:d0.min||60,due,dueTime:tm,pri:pri==null?1:pri,split:true,
     repeat:rep,done:false,note:'',pin:(d1.d&&d2.t)?{d:d1.d,s:d2.t}:null});
   planAll();persist();render();
   const repName={daily:'每天',workdays:'工作日',every3:'每3天',weekly:'每周',monthly:'每月'}[rep]||'';
-  return {ok:'加了「'+title+'」'+(d1.d?' '+d1.d.slice(5)+' '+(d2.t||'') : '')+(repName?'（'+repName+'，已排到 14 天后）':'')};
+  return {ok:'加了「'+title2+'」'+(d1.d?' '+d1.d.slice(5)+' '+(d2.t||'') : '')+(repName?'（'+repName+'，已排到 14 天后）':'')};
 }
 function addCourseFromText(s){
   const a=findDate(s);
@@ -1707,13 +1797,17 @@ document.addEventListener('click',ev=>{
   if(act==='task'){ev.stopPropagation();const t=db.tasks.find(x=>x.id===id);if(t){S.sel=id;openTask(t);}return;}
   if(act==='course'){
     const c=db.courses.find(x=>x.id===id);if(!c)return;
-    if(!S.editMode){
-      S.sel=id;render();
-      if(!S.hintDone){S.hintDone=true;toast('课程锁着呢，点右上「编辑」才能改');}
-      return;
-    }
+    S.sel=id;
+    if(!S.editMode){openCourseView(c);return;}
     openCourse(c);return;
   }
+  if(act==='editcourse'){
+    const c=db.courses.find(x=>x.id===el.dataset.id);if(!c)return;
+    S.editMode=true;document.body.classList.add('editing');openCourse(c);return;
+  }
+  if(act==='fix'){openFix(el.dataset.id,el.dataset.d);return;}
+  if(act==='fixdone'){toggleFix(el.dataset.id,el.dataset.d);return;}
+  if(act==='day'){toggleDayChip(el);return;}
   if(act==='editing'){
     S.editMode=!S.editMode;
     document.body.classList.toggle('editing',S.editMode);
@@ -1757,6 +1851,14 @@ document.addEventListener('click',ev=>{
     data.pri=seg?+seg.dataset.v:1;
     const repEl=$('#tRep');
     if(repEl){const rb=repEl.querySelector('button.on');data.repeat=rb?rb.dataset.v:'';}
+    const dayBox=$('#tDaysVal');
+    const days=dayBox&&dayBox.value?dayBox.value.split(',').map(Number).filter(Boolean):[];
+    data.days=days;data.fix=days.length>0;
+    if(days.length){
+      data.repeat='';
+      const fs=$('#tFixStart');
+      data.pin={d:today(),s:(fs&&fs.value)||'20:00'};
+    }
     if(t)Object.assign(t,data);else db.tasks.push(Object.assign({id:uid(),done:false},data));
     planAll();persist();S.sel=t?t.id:null;closeModal();render();return;
   }
