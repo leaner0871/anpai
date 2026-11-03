@@ -967,7 +967,13 @@ function doUndo(){
 function doReset(){
   if(!confirm('清空全部任务、课程、目标、流水，变成一张白纸。\n（想留着就先「导出备份」，清空后 5 秒内也能撤销）'))return false;
   snap();
-  db=emptyDB();S.editMode=false;S.sel=null;persist();planAll();applyTheme();render();
+  const old=settings();
+  db=emptyDB();
+  /* 清的是数据，不是你的学期设置：开始周、作息、主题、Key 都留着 */
+  ['semStart','weeks','theme','dayStart','dayEnd','meals','apiKey','baseURL','model'].forEach(k=>{
+    if(old[k]!==undefined&&old[k]!==null)db.settings[k]=old[k];
+  });
+  S.editMode=false;S.sel=null;persist();planAll();applyTheme();render();
   toastUndo('已清空');return true;
 }
 function toastUndo(msg){
