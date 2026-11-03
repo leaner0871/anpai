@@ -144,6 +144,8 @@ body.editing .blk[data-act="course"]:hover{outline-style:solid}
 body.dragmode,body.dragmode *{cursor:grabbing!important;-webkit-user-select:none;user-select:none}
 @media (pointer:coarse){.blk{touch-action:none}}
 /* ---------- 指令条 ---------- */
+.undo{font-size:11px;padding:4px 8px}
+.undo.off{opacity:.35;cursor:default}
 .cmd{position:sticky;bottom:10px;margin-top:14px;z-index:30}
 .cmdin{display:flex;gap:7px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;
   padding:6px 7px 6px 14px;box-shadow:0 8px 26px rgba(46,59,54,.08)}
@@ -219,7 +221,8 @@ body.dragmode,body.dragmode *{cursor:grabbing!important;-webkit-user-select:none
   body{padding:12px 12px 90px}
   .main{grid-template-columns:1fr}
   .top{gap:10px}
-  .head-r{display:none}
+  .head-r{display:flex;gap:6px}
+  .head-r>span{display:none}
   .weekwrap{overflow-x:auto;margin:0 -4px}
   .days{min-width:620px}
   .weekview .stack{order:-1}
@@ -517,6 +520,7 @@ function render(){
   $('#nav').innerHTML=TABS.map(([k,n])=>'<button data-act="tab" data-k="'+k+'" class="'+(S.view===k?'on':'')+'">'+n+'</button>').join('');
   const d=new Date();
   $('#headRight').innerHTML='<span>第 '+weekIdx(today())+' 周 · 周'+WEEK[wdOf(today())-1]+' '+(d.getMonth()+1)+'月'+d.getDate()+'日</span>'
+    +'<button class="btn sm undo'+(UNDO?'':' off')+'" data-act="undo" title="撤销上一步">↩ 撤销</button>'
     +'<button class="btn icon" data-act="search" title="搜索（/）" style="font-size:15px;line-height:1">⌕</button>'
     +'<button class="btn icon" data-act="theme" title="切换主题" style="font-size:13px;line-height:1">◐</button>';
   const el=$('#app');
@@ -575,7 +579,8 @@ function colHTML(d,H,ds,total){
       const cw=cWeeks(b.c), full=(cw[0]===1&&cw[1]>=(Number(settings().weeks)||18));
       const wtag=full?'':(' · '+(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'));
       const tip=b.c.name+' '+b.c.s+'–'+b.c.e+(b.c.loc?' · '+b.c.loc:'')+(full?' · 每周':wtag)+(b.c.parity==='odd'?' · 单周':b.c.parity==='even'?' · 双周':'');
-      return '<div class="blk '+TONE[b.ci%3]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+(full?'每周':(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'))+(b.c.parity==='odd'?' 单':b.c.parity==='even'?' 双':'')+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
+      const tone=Number(b.c.tone==null?(b.ci%3):b.c.tone)%3;
+      return '<div class="blk '+TONE[tone]+tiny+(S.sel===b.c.id?' sel':'')+'" data-act="course" data-id="'+b.c.id+'" title="'+esc(tip)+'" style="'+laneCss+'top:'+top+'px;height:'+h+'px"><b>'+esc(b.c.name)+'</b><em>'+(full?'每周':(cw[0]===cw[1]?cw[0]+'周':cw[0]+'–'+cw[1]+'周'))+(b.c.parity==='odd'?' 单':b.c.parity==='even'?' 双':'')+(b.c.loc?' · '+esc(b.c.loc):'')+'</em>'+rz+'</div>';
     }
     const band=bandOf(b.t);
     if(b.k==='f'){
@@ -612,6 +617,10 @@ function bindGrid(){
   document.querySelectorAll('.col').forEach(col=>{
     col.addEventListener('click',ev=>{
       if(ev.target.closest('.blk'))return;
+      if(!S.editMode){
+        if(!S.hintGrid){S.hintGrid=true;toast('点右上「编辑」才能在这里加任务');}
+        return;
+      }
       const r=col.getBoundingClientRect(),y=ev.clientY-r.top;
       const ds=mins(settings().dayStart);
       let m=Math.round((ds+y/40*60)/15)*15;
@@ -690,6 +699,7 @@ function onBlkUp(){
   window.removeEventListener('pointercancel',onBlkUp);
   const dr=DR;DR=null;
   if(!dr)return;
+  snap();
   dr.el.classList.remove('drag','bad');
   document.body.classList.remove('dragmode');
   if(!dr.moved)return;
@@ -854,6 +864,16 @@ function monthTxns(){return db.txns.filter(x=>x.ts.slice(0,7)===monthKey()).sort
 function acctBal(a){let b=Number(a.base)||0;db.txns.forEach(x=>{if(x.acct===a.id)b+=x.type==='in'?x.amount:-x.amount;});return b;}
 function totalBal(){return db.accounts.reduce((s,a)=>s+acctBal(a),0);}
 function dayOut(d){return db.txns.filter(x=>x.type==='out'&&x.ts.slice(0,10)===d).reduce((s,x)=>s+x.amount,0);}
+function openAcct(id){
+  const a=id?db.accounts.find(x=>x.id===id):null;
+  modal('<h3>'+(a?'编辑账户':'新增账户')+'<button class="x" data-act="closed">×</button></h3>'
+    +'<div class="field"><label>名称</label><input id="aName" type="text" value="'+(a?esc(a.name):'')+'" placeholder="饭卡 / 校园卡 / 花呗"></div>'
+    +'<div class="field" style="margin-top:10px"><label>当前余额（初始）</label><input id="aBase" type="number" step="0.01" value="'+(a?(a.base||0):0)+'"></div>'
+    +'<div class="hint" style="margin-top:8px">余额 = 这个数 + 之后记在这个账户上的收支。已有流水不会丢。</div>'
+    +'<div class="acts">'+(a?'<button class="btn" data-act="delacct" data-id="'+a.id+'" style="margin-right:auto;color:#C0674F">删除账户</button>':'')
+    +'<button class="btn" data-act="closed">取消</button>'
+    +'<button class="btn primary" data-act="saveacct" data-id="'+(a?a.id:'')+'">保存</button></div>');
+}
 function viewMoney(){
   const list=monthTxns();
   const out=list.filter(x=>x.type==='out').reduce((s,x)=>s+x.amount,0);
@@ -870,9 +890,10 @@ function viewMoney(){
     +'<button class="btn primary" data-act="addtxn">记一笔</button></div>'
     +'<div class="hint" style="margin-top:6px">直接用手机输入法语音说一句，识别完自动拆成金额、分类、账户。</div></div>'
     +'<div class="list">'+(rows||'<div class="empty">这个月还没有记录</div>')+'</div></div>'
-    +'<div class="stack"><div class="card"><div class="card-h"><b>账户</b><em>点数字可对账</em></div><div class="money">'
+    +'<div class="stack"><div class="card"><div class="card-h"><b>账户</b><em>点数字对账 · 点名字改名</em>'
+    +'<div class="sp"><button class="btn sm" data-act="newacct">+ 账户</button></div></div><div class="money">'
     +'<div class="bal">'+money(totalBal())+'<small>合计</small></div>'
-    +db.accounts.map(a=>'<div class="wrow"><span>'+esc(a.name)+'</span><b data-act="recon" data-id="'+a.id+'" style="cursor:pointer;border-bottom:1px dashed var(--gray)">'+money(acctBal(a))+'</b></div>').join('')
+    +db.accounts.map(a=>'<div class="wrow"><span data-act="acct" data-id="'+a.id+'" style="cursor:pointer">'+esc(a.name)+'</span><b data-act="recon" data-id="'+a.id+'" style="cursor:pointer;border-bottom:1px dashed var(--gray)">'+money(acctBal(a))+'</b></div>').join('')
     +'</div></div>'
     +'<div class="card"><div class="card-h"><b>本月分类</b></div><div class="money">'+catBars('out')+'</div></div></div></div>';
 }
@@ -1011,6 +1032,9 @@ function openCourse(c){
     +'<div class="field"><label>起周</label><input id="cW1" type="number" min="1" max="30" value="'+(Number(v.w1)||1)+'"></div>'
     +'<div class="field"><label>止周</label><input id="cW2" type="number" min="1" max="30" value="'+(Number(v.w2)||Number(settings().weeks)||18)+'"></div>'
     +'<div class="field"><label>单双周</label><select id="cParity">'+pSel+'</select></div>'
+    +'<div class="field"><label>色块</label><select id="cTone">'
+      +[['0','天蓝'],['1','淡紫'],['2','薄荷']].map(o=>'<option value="'+o[0]+'"'+(Number(v.tone)===+o[0]?' selected':'')+'>'+o[1]+'</option>').join('')
+    +'</select></div>'
     +'</div>'
     +'<div class="hint" style="margin-top:10px">课只在「起周–止周」这段周次里出现。想看别的周，用周视图右上角 ‹ › 翻。</div>'
     +'<div class="acts">'+(c?'<button class="btn" data-act="delcourse" data-id="'+c.id+'" style="margin-right:auto;color:#C0674F">删除</button>':'')
@@ -1041,6 +1065,7 @@ function openTxn(id){
 /* ---- 搜索 / 撤销 / 重复 ---- */
 let UNDO=null;
 function snap(){UNDO=JSON.stringify(db);}
+function undoable(){const b=document.querySelector('.undo');if(b)b.classList.toggle('off',!UNDO);}
 function doUndo(){
   if(!UNDO){toast('没有可撤销的操作');return false;}
   db=JSON.parse(UNDO);UNDO=null;planAll();persist();applyTheme();render();toast('已撤销');return true;
@@ -1809,7 +1834,7 @@ document.addEventListener('click',ev=>{
   if(act==='fixdone'){toggleFix(el.dataset.id,el.dataset.d);return;}
   if(act==='day'){toggleDayChip(el);return;}
   if(act==='editing'){
-    S.editMode=!S.editMode;
+    S.editMode=!S.editMode;S.hintGrid=false;
     document.body.classList.toggle('editing',S.editMode);
     render();
     toast(S.editMode?'编辑模式：可以拖动 / 点开课程改了':'已退出编辑');
@@ -1821,7 +1846,9 @@ document.addEventListener('click',ev=>{
     if(!name){toast('课程得有个名字');return;}
     const wd=+$('#cWd').value,s=$('#cS').value,e=$('#cE').value;
     if(mins(e)<=mins(s)){toast('结束时间要晚于开始');return;}
+    snap();
     const data={name,wd,s,e,loc:$('#cLoc').value.trim(),parity:$('#cParity').value,
+      tone:Number($('#cTone')?$('#cTone').value:0),
       w1:Math.max(1,+$('#cW1').value||1),w2:Math.max(1,+$('#cW2').value||Number(settings().weeks)||18)};
     const c=id?db.courses.find(x=>x.id===id):null;
     if(c)Object.assign(c,data);else db.courses.push(Object.assign({id:uid()},data));
@@ -1842,6 +1869,7 @@ document.addEventListener('click',ev=>{
   if(act==='savetask'){
     const title=$('#tTitle').value.trim();if(!title){toast('写个标题');return;}
     const pinRaw=$('#tPin').value;
+    snap();
     let t=S.editing?db.tasks.find(x=>x.id===S.editing):null;
     const data={title,est:Math.max(10,+$('#tEst').value||60),due:$('#tDue').value||today(),
       dueTime:$('#tDueTime').value||'23:59',split:$('#tSplit').checked,
@@ -1866,6 +1894,7 @@ document.addEventListener('click',ev=>{
   if(act==='newgoal'){openGoal();return;}
   if(act==='goal'){openGoal(id);return;}
   if(act==='savegoal'){
+    snap();
     const title=$('#gTitle').value.trim();if(!title){toast('写个目标');return;}
     const due=$('#gDue').value||addDays(today(),30),note=$('#gNote').value.trim();
     const g=GOAL_EDIT?db.goals.find(x=>x.id===GOAL_EDIT):null;
@@ -1882,6 +1911,23 @@ document.addEventListener('click',ev=>{
   }
   if(act==='addtxn'){addTxnFromText();return;}
   if(act==='txn'){openTxn(id);return;}
+  if(act==='newacct'){openAcct(null);return;}
+  if(act==='acct'){openAcct(id);return;}
+  if(act==='saveacct'){
+    const name=$('#aName').value.trim();
+    if(!name){toast('账户得有个名字');return;}
+    const base=Number($('#aBase').value)||0;
+    snap();
+    const a=id?db.accounts.find(x=>x.id===id):null;
+    if(a){a.name=name;a.base=base;}
+    else db.accounts.push({id:'ac'+uid().slice(0,6),name,base});
+    persist();closeModal();render();toast('账户已保存');return;
+  }
+  if(act==='delacct'){
+    if(db.accounts.length<=1){toast('至少留一个账户');return;}
+    if(db.txns.some(x=>x.acct===id)){toast('这个账户还有流水，先把流水删掉或换账户');return;}
+    snap();db.accounts=db.accounts.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('账户已删除');return;
+  }
   if(act==='deltxn'){snap();db.txns=db.txns.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('已删除');return;}
   if(act==='recon'){
     const a=db.accounts.find(x=>x.id===id);if(!a)return;
