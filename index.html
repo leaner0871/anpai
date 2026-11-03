@@ -1150,6 +1150,9 @@ async function loadSeed(){
         if(nt)db.tasks=d.tasks.map(t=>Object.assign({},t,{id:uid(),plan:[],late:false,overflow:false}));
         if(d.settings&&d.settings.semStart)db.settings.semStart=d.settings.semStart;
         if(d.settings&&d.settings.weeks)db.settings.weeks=d.settings.weeks;
+        if(d.settings&&d.settings.dayStart)db.settings.dayStart=d.settings.dayStart;
+        if(d.settings&&d.settings.dayEnd)db.settings.dayEnd=d.settings.dayEnd;
+        if(d.settings&&d.settings.meals)db.settings.meals=d.settings.meals;
         planAll();persist();render();toast('载入完成：'+nc+' 门课');
       });
   }catch(e){
