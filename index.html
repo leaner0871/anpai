@@ -282,7 +282,7 @@ const DEFAULT_SETTINGS={
   weeks:18, dayStart:'08:00', dayEnd:'23:00',
   meals:[[720,780],[1050,1110]],
   apiKey:'', baseURL:'https://api.deepseek.com', model:'deepseek-chat',
-  theme:'light', seed:true
+  theme:'light', seed:true, budget:0
 };
 function emptyDB(){
   const t=today(),mon=addDays(t,-(wdOf(t)-1));
@@ -897,7 +897,23 @@ function viewMoney(){
     +'<div class="bal">'+money(totalBal())+'<small>合计</small></div>'
     +db.accounts.map(a=>'<div class="wrow"><span data-act="acct" data-id="'+a.id+'" style="cursor:pointer">'+esc(a.name)+'</span><b data-act="recon" data-id="'+a.id+'" style="cursor:pointer;border-bottom:1px dashed var(--gray)">'+money(acctBal(a))+'</b></div>').join('')
     +'</div></div>'
+    +budgetCard()
     +'<div class="card"><div class="card-h"><b>本月分类</b></div><div class="money">'+catBars('out')+'</div></div></div></div>';
+}
+function budgetCard(){
+  const b=Number(settings().budget||0);
+  const out=monthTxns().filter(x=>x.type==='out').reduce((s,x)=>s+x.amount,0);
+  if(!b){
+    return '<div class="card"><div class="card-h"><b>本月预算</b><em>还没设</em></div>'
+      +'<div class="money"><div class="hint">在「设置」里填一个月度预算，这里就会显示还剩多少。</div></div></div>';
+  }
+  const pct=Math.min(100,out/b*100), over=out>b;
+  const left=b-out;
+  const col=over?'#EF9A88':(pct>80?'#F3CE7E':'#7ED0B4');
+  return '<div class="card"><div class="card-h"><b>本月预算</b><em>已花 '+money(out)+' / '+money(b)+'</em></div>'
+    +'<div class="money"><div class="bal" style="color:'+(over?'#C0674F':'inherit')+'">'+(over?'超支 '+money(Math.abs(left)):'还剩 '+money(left))+'</div>'
+    +'<div style="margin-top:8px;height:8px;border-radius:6px;background:var(--wash);overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:'+col+';border-radius:6px"></i></div>'
+    +'<div class="hint" style="margin-top:6px">'+pct.toFixed(0)+'% 用完'+(over?'，这个月别再花了':(left<b*0.2?'，剩下的悠着点':''))+'</div></div></div>';
 }
 function catBars(type){
   const list=monthTxns().filter(x=>x.type===type);
@@ -922,6 +938,16 @@ function prevMonthTxns(){
   const k=d.getFullYear()+'-'+pad2(d.getMonth()+1);
   return db.txns.filter(x=>x.ts.slice(0,7)===k);
 }
+function monthTrend(n){
+  const base=pdk(monthKey()+'-01');
+  const keys=[];
+  for(let i=n-1;i>=0;i--){const d=new Date(base.getFullYear(),base.getMonth()-i,1);keys.push(d.getFullYear()+'-'+pad2(d.getMonth()+1));}
+  const vals=keys.map(k=>db.txns.filter(x=>x.type==='out'&&x.ts.slice(0,7)===k).reduce((s,x)=>s+x.amount,0));
+  const mx=Math.max(1,...vals);
+  const bars=vals.map((v,i)=>'<div class="'+(v===mx&&v>0?'hi':'')+'" style="height:'+Math.max(4,v/mx*100)+'%"></div>').join('');
+  const labels=keys.map(k=>'<div style="flex:1;text-align:center;font-size:9.5px;color:var(--muted)">'+k.slice(5)+'月</div>').join('');
+  return '<div class="bars" style="height:70px">'+bars+'</div><div style="display:flex;gap:4px;margin-top:4px">'+labels+'</div>';
+}
 function viewReport(){
   const list=monthTxns();
   const out=list.filter(x=>x.type==='out').reduce((s,x)=>s+x.amount,0);
@@ -936,7 +962,8 @@ function viewReport(){
     +'<div class="money"><div class="bal">'+money(out)+'<small>支出 / 收入 '+money(inc)+'</small></div>'
     +'<div class="hint" style="margin-top:6px">'+cmp+(prev.length?'（上月支 '+money(pout)+' · 收 '+money(pinc)+'）':'')+'</div>'
     +'<div style="margin-top:10px">'+catBars('out')+'</div></div></div>'
-    +'<div class="stack"><div class="card"><div class="card-h"><b>近 7 天支出</b></div><div class="money">'+moneyBars(7)+'</div></div>'
+    +'<div class="stack"><div class="card"><div class="card-h"><b>近 6 个月</b><em>每月支出</em></div><div class="money">'+monthTrend(6)+'</div></div>'
+    +'<div class="card"><div class="card-h"><b>近 7 天支出</b></div><div class="money">'+moneyBars(7)+'</div></div>'
     +'<div class="card"><div class="card-h"><b>解读</b><em>可选 AI</em>'
     +'<div class="sp"><button class="btn sm" data-act="aireport">生成</button></div></div>'
     +'<div class="money"><div id="aiOut" class="hint">点「生成」让模型读一遍本月账单，写一段白话解读；没填 Key 就只用本地统计。</div></div></div></div></div>';
@@ -949,7 +976,8 @@ function viewSet(){
     +'<div class="field"><label>模型</label><input id="setModel" type="text" value="'+esc(s.model)+'"></div>'
     +'<div class="field"><label>接口地址</label><input id="setURL" type="text" value="'+esc(s.baseURL)+'"></div>'
     +'<div class="field"><label>学期开始（第一周周一）</label><input id="setSem" type="date" value="'+s.semStart+'"></div>'
-    +'<div class="field"><label>每天开始</label><input id="setDS" type="time" value="'+s.dayStart+'"></div>'
+          +'<div class="field"><label>每月预算（元，0 = 不设）</label><input id="setBudget" type="number" min="0" step="100" value="'+(s.budget||0)+'"></div>'
+      +'<div class="field"><label>每天开始</label><input id="setDS" type="time" value="'+s.dayStart+'"></div>'
     +'<div class="field"><label>每天结束</label><input id="setDE" type="time" value="'+s.dayEnd+'"></div>'
     +'<div class="field"><label>主题</label><div class="seg" id="setTheme">'
     +[['light','浅色'],['dark','深色'],['auto','跟随系统']].map(o=>'<button data-act="theme" data-v="'+o[0]+'" class="'+((s.theme||'light')===o[0]?'on':'')+'">'+o[1]+'</button>').join('')
@@ -957,6 +985,7 @@ function viewSet(){
     +'</div>'
     +'<div class="acts" style="justify-content:flex-start;margin-top:14px">'
     +'<button class="btn primary" data-act="saveset">保存</button>'
+    +'<button class="btn" data-act="tofixall">重复任务转固定块</button>'
     +'<button class="btn" data-act="exportjson">导出备份</button>'
     +'<button class="btn" data-act="importjson">导入备份</button>'
     +'<button class="btn" data-act="exportics">导出日历 .ics</button>'
@@ -1961,6 +1990,19 @@ document.addEventListener('click',ev=>{
     if(db.txns.some(x=>x.acct===id)){toast('这个账户还有流水，先把流水删掉或换账户');return;}
     snap();db.accounts=db.accounts.filter(x=>x.id!==id);persist();closeModal();render();toastUndo('账户已删除');return;
   }
+  if(act==='tofixall'){
+    const reps=db.tasks.filter(t=>t.repeat&&!t.fix&&!t.done);
+    if(!reps.length){toast('没有可转换的重复任务');return;}
+    const titles=new Set(reps.map(t=>t.title));
+    if(!confirm('把这 '+titles.size+' 个重复任务变成「每周固定」？'+NL+'会清掉已经铺出来的未来实例，以后每周固定那几天出现，不再自动找空位。'))return;
+    snap();
+    const keep={};
+    reps.slice().sort((a,b)=>a.due<b.due?-1:1).forEach(t=>{if(!keep[t.title])keep[t.title]=t;});
+    const keepIds=new Set(Object.values(keep).map(t=>t.id));
+    db.tasks=db.tasks.filter(t=>keepIds.has(t.id)||!(t.repeat&&!t.fix&&titles.has(t.title)));
+    Object.values(keep).forEach(t=>{t.fix=true;t.days=[wdOf(t.due)];t.repeat='';});
+    planAll();persist();render();toastUndo('已转 '+(Object.keys(keep).length)+' 个为固定块');return;
+  }
   if(act==='exportcsv'){exportCSV();return;}
   if(act==='archdone'){
     const n=db.tasks.filter(t=>t.done).length;
@@ -1990,6 +2032,7 @@ document.addEventListener('click',ev=>{
     s.baseURL=$('#setURL').value.trim()||'https://api.deepseek.com';
     s.semStart=$('#setSem').value||s.semStart;
     s.dayStart=$('#setDS').value||'08:00';s.dayEnd=$('#setDE').value||'23:00';
+    s.budget=Math.max(0,Number($('#setBudget').value||0));
     planAll();persist();render();toast('设置已保存');return;
   }
   if(act==='exportjson'){exportJSON();return;}
