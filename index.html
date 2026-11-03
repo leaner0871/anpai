@@ -446,7 +446,30 @@ function bandOf(t){
   const {score}=scoreTask(t);
   return score>=72?0:score>=52?1:score>=32?2:3;
 }
+function ensureRepeat(horizon){
+  horizon=horizon||14;
+  const lim=addDays(today(),horizon);
+  let added=0;
+  db.tasks.filter(t=>t.repeat&&!t.done).forEach(t=>{
+    let cur=t,guard=0;
+    while(guard++<40){
+      const nd=nextDueOf(cur);
+      if(!nd||nd>lim)break;
+      const ex=db.tasks.find(x=>x.repeat===cur.repeat&&x.title===cur.title&&x.due===nd);
+      if(ex){cur=ex;continue;}
+      const inst={id:uid(),title:cur.title,est:cur.est,due:nd,dueTime:cur.dueTime||'23:59',pri:cur.pri,
+        split:cur.split,repeat:cur.repeat,done:false,doneAt:'',note:cur.note,
+        pin:cur.pin?{d:nd,s:cur.pin.s}:null,plan:[],goalId:cur.goalId||''};
+      db.tasks.push(inst);cur=inst;added++;
+    }
+  });
+  // 清理很久以前的已完成重复实例，避免无限长
+  const cut=addDays(today(),-7);
+  db.tasks=db.tasks.filter(t=>!(t.repeat&&t.done&&t.due<cut));
+  return added;
+}
 function planAll(){
+  ensureRepeat(14);
   db.tasks.forEach(t=>{t.plan=[];t.late=false;});
   const occ={};
   const get=d=>occ[d]||(occ[d]=baseBusy(d,null));
@@ -487,7 +510,7 @@ function planAll(){
 }
 
 /* ============ 状态 ============ */
-const S={view:'week',weekOff:0,sel:null,modal:null,editMode:false,hintDone:false};
+const S={view:'week',weekOff:0,sel:null,modal:null,editMode:false,hintDone:false,planAll:false};
 const TABS=[['week','课程表'],['today','今日'],['plan','规划'],['money','记账'],['report','报表'],['set','设置']];
 /* ============ 渲染 ============ */
 function render(){
@@ -773,16 +796,22 @@ function viewPlan(){
       +'<span class="tag">'+pct+'%</span></div>';
   }).join('');
   const pend=db.tasks.filter(t=>!t.done).sort((a,b)=>scoreTask(b).score-scoreTask(a).score);
-  const rows=pend.map(t=>{
+  const LIMIT=12;
+  const shown=S.planAll?pend:pend.slice(0,LIMIT);
+  const rows=shown.map(t=>{
     const b=bandOf(t),p=(t.plan||[])[0];
     return '<div class="li" data-act="task" data-id="'+t.id+'"><div class="fbar" style="background:'+BAND_HEX[b]+';height:34px"></div>'
       +'<div class="lt"><b>'+esc(t.title)+'</b><span>'+t.est+'min · 截止 '+t.due.slice(5)+' '+(t.dueTime||'')
       +(t.overflow?' · <b style="color:#C0674F">排不下</b>':(p?' · 排入 '+p.d.slice(5)+' '+p.s:''))+'</span></div>'
       +'<span class="tag">'+scoreTask(t).score+'</span>'+chip(t)+'</div>';
   }).join('');
+  const more=pend.length>LIMIT
+    ? '<div style="padding:10px 0;text-align:center"><button class="btn sm" data-act="planall">'
+      +(S.planAll?'收起':'展开全部 '+pend.length+' 条')+'</button></div>'
+    : '';
   return '<div class="main"><div class="card"><div class="card-h"><b>待办</b><em>按紧迫度排，改完立刻重排</em>'
     +'<div class="sp"><button class="btn sm" data-act="newtask">+ 任务</button></div></div>'
-    +'<div class="list">'+(rows||'<div class="empty">没有待办<br><b>点右上角加一件</b></div>')+'</div></div>'
+    +'<div class="list">'+(rows||'<div class="empty">没有待办<br><b>点右上角加一件</b></div>')+more+'</div></div>'
     +'<div class="stack"><div class="card"><div class="card-h"><b>目标</b><em>长期的事</em>'
     +'<div class="sp"><button class="btn sm" data-act="newgoal">+ 目标</button></div></div>'
     +'<div class="list">'+(goals||'<div class="empty">还没有目标<br><b>加一个期末想达成的事</b></div>')+'</div></div></div></div>';
@@ -852,7 +881,7 @@ function viewSet(){
   const s=settings();
   return '<div class="main"><div class="card"><div class="card-h"><b>设置</b><em>全部存在本机</em></div><div style="padding:0 16px 16px">'
     +'<div class="grid2">'
-    +'<div class="field"><label>DeepSeek / OpenAI 兼容 Key</label><input id="setKey" type="password" value="'+esc(s.apiKey)+'" placeholder="sk-..."></div>'
+    +'<div class="field"><label>DeepSeek / OpenAI 兼容 Key</label><input id="setKey" type="password" value="'+esc(s.apiKey)+'" placeholder="没填就用纯本地模式"><div class="hint">'+(s.apiKey?'已保存（'+esc(s.apiKey.slice(0,3))+'…'+esc(s.apiKey.slice(-4))+'）：留空保存不会清掉':'未填写：AI 相关功能不可用，其余功能纯本地照常')+'</div></div>'
     +'<div class="field"><label>模型</label><input id="setModel" type="text" value="'+esc(s.model)+'"></div>'
     +'<div class="field"><label>接口地址</label><input id="setURL" type="text" value="'+esc(s.baseURL)+'"></div>'
     +'<div class="field"><label>学期开始（第一周周一）</label><input id="setSem" type="date" value="'+s.semStart+'"></div>'
@@ -1760,7 +1789,9 @@ document.addEventListener('click',ev=>{
   }
   if(act==='saveset'){
     const s=settings();
-    s.apiKey=$('#setKey').value.trim();s.model=$('#setModel').value.trim()||'deepseek-chat';
+    const nk=$('#setKey').value.trim();
+    if(nk)s.apiKey=nk;               // 留空＝不改，避免手滑把 Key 抹掉
+    s.model=$('#setModel').value.trim()||'deepseek-chat';
     s.baseURL=$('#setURL').value.trim()||'https://api.deepseek.com';
     s.semStart=$('#setSem').value||s.semStart;
     s.dayStart=$('#setDS').value||'08:00';s.dayEnd=$('#setDE').value||'23:00';
@@ -1769,6 +1800,7 @@ document.addEventListener('click',ev=>{
   if(act==='exportjson'){exportJSON();return;}
   if(act==='importjson'){importJSON();return;}
   if(act==='loadseed'){loadSeed();return;}
+  if(act==='planall'){S.planAll=!S.planAll;render();return;}
   if(act==='exportics'){exportICS();return;}
   if(act==='aireport'){aiReport();return;}
   if(act==='reset'){doReset();return;}
